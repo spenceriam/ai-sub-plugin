@@ -325,3 +325,4 @@ Item {
     rescan()
     refreshKeyStatus()
   }
+}

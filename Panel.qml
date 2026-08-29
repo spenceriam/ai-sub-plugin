@@ -73,9 +73,6 @@ Panel {
   readonly property real chromeH: (hero.implicitHeight || 0) + (tabSwitch.implicitHeight || 0) + root.sectionGap * 2
   readonly property real scrollBudget: Math.max(Style.space(96), heightCap - panel.verticalContentInset - chromeH)
 
-  implicitWidth: button.implicitWidth
-  implicitHeight: button.implicitHeight
-
   readonly property var keyFields: [
     { id: "kimi", label: "Kimi Code", provider: "Moonshot AI", hint: "Code Console key — not a Moonshot wallet key" },
     { id: "glm", label: "GLM Coding Plan", provider: "Z.ai", hint: "Z.ai coding-plan key. Raw Authorization header." },
