@@ -4,6 +4,10 @@ Donut tiles on the Omarchy bar for six coding-plan subscriptions: **Kimi Code**,
 
 Plugin id: `io.github.spenceriam.ai-sub-monitor`. License: MIT.
 
+![AI Subs usage panel](preview.png)
+
+![AI Subs expanded tile](preview-expanded.png)
+
 ## Install
 
 ```sh
@@ -69,18 +73,3 @@ rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/ai-sub-monitor"
 - **Python 3** (stdlib). `collect.py` calls each provider’s usage HTTP API with the saved Bearer/Authorization key.
 - **Omarchy notifications** via `omarchy notification send` (not `notify-send`): plan added, key/usage failure, usage ≥ 90%.
 - Network to: `api.kimi.com`, `api.z.ai` (or `open.bigmodel.cn`), `api.minimax.io` (or `api.minimaxi.com`), `ollama.com`, `app.kilo.ai` / `api.kilo.ai`, `api.commandcode.ai`.
-
-## Not in v1
-
-OpenRouter, Venice, Sakana, Gemini CLI OAuth, Grok, cookie scrapes.
-
-## Mockup
-
-Open `mockup/index.html`. Demo assumes Kimi, MiniMax, Ollama, Kilo Pass, and Command Code are configured; GLM is not. First-run picker: `?onboard=1`.
-
-## Tests
-
-```sh
-python3 tests/test_collect.py
-omarchy plugin validate .
-```
