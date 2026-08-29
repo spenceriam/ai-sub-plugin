@@ -1,6 +1,6 @@
 # AI Sub Monitor
 
-Donut tiles on the Omarchy bar for six coding-plan subscriptions: **Kimi Code**, **GLM Coding Plan**, **MiniMax Token Plan**, **Ollama Cloud**, **Kilo Pass**, and **Command Code**. Keys stay in a local env file. The plugin does not scrape cookies, impersonate OAuth apps, or hit PAYG wallets.
+Quick glance plugin for AI subscriptions such as Kimi Code, MiniMax Token Plan, Z.ai GLM Coding Plan, and others. It sits on the Omarchy bar. Keys stay in a local env file.
 
 Plugin id: `io.github.spenceriam.ai-sub-monitor`. License: MIT.
 
@@ -23,6 +23,16 @@ omarchy plugin enable io.github.spenceriam.ai-sub-monitor --section right --afte
 ```
 
 Python 3 is required (`collect.py` uses the stdlib only). No extra packages, daemons, or sudo.
+
+## Update
+
+`omarchy plugin add` clones `main`. `omarchy plugin update` fast-forwards that clone. Ship a version by bumping `version` in `manifest.json`, pushing `main`, and tagging the same commit `vX.Y.Z`. The first release is `v0.1.0`. A GitHub Action turns that tag into a Release.
+
+```sh
+omarchy plugin update io.github.spenceriam.ai-sub-monitor
+```
+
+The plugin checks GitHub Releases about every six hours. If the latest tag is newer than the installed `manifest.json` version, you get an Omarchy notification. Settings shows the version and an Update plugin button, which runs the same command in a terminal so you can read the diff first.
 
 ## Usage
 
@@ -56,20 +66,37 @@ Bar setting `refreshIntervalSec` (30–3600, default 300) is the usage poll inte
 
 ## Remove
 
+Delete saved keys and usage files first (the plugin folder still has to exist for this command). `--yes` is required. Without it, nothing is deleted.
+
 ```sh
+python3 collect.py --uninstall --yes
 omarchy plugin remove io.github.spenceriam.ai-sub-monitor
 ```
 
-That disables the widget and deletes the plugin checkout. Keys and UI state are left in place. To delete those too:
+`collect.py --uninstall` only removes this plugin's key directory, the legacy env file, and the usage state directory. It refuses any other path. `omarchy plugin remove` takes the widget off the bar and deletes the plugin checkout.
 
-```sh
-rm -rf ~/.config/ai-sub-monitor
-rm -f ~/.config/omarchy/ai-sub-monitor.env
-rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/ai-sub-monitor"
-```
+If the plugin is already gone, run `--uninstall` from a clone of this repo.
 
 ## Dependencies
 
 - **Python 3** (stdlib). `collect.py` calls each provider’s usage HTTP API with the saved Bearer/Authorization key.
 - **Omarchy notifications** via `omarchy notification send` (not `notify-send`): plan added, key/usage failure, usage ≥ 90%.
 - Network to: `api.kimi.com`, `api.z.ai` (or `open.bigmodel.cn`), `api.minimax.io` (or `api.minimaxi.com`), `ollama.com`, `app.kilo.ai` / `api.kilo.ai`, `api.commandcode.ai`.
+
+## Contribute
+
+If a coding plan you use is not in the list, open a GitHub issue. If you already know the usage API, send a pull request too.
+
+- [Request a plan (issue)](https://github.com/spenceriam/ai-sub-plugin/issues/new?title=Request%20a%20plan&body=Plan%20name%3A%0AProvider%20%28and%20site%29%3A%0ADocs%20or%20pricing%20URL%3A%0AUsage%20API%20%28if%20you%20have%20it%29%3A%0A)
+- [Open a pull request](https://github.com/spenceriam/ai-sub-plugin/compare)
+
+Paste this into the issue:
+
+```md
+Plan name:
+Provider (and site):
+Docs or pricing URL:
+Usage API (if you have it):
+```
+
+A PR should add a collector in `collect.py`, a fixture under `tests/fixtures/`, and a Settings picker row. Use the provider's official plan name.

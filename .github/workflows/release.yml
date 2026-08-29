@@ -1,0 +1,27 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Match tag to manifest version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(jq -r .version manifest.json)"
+          if [ "$tag" != "$ver" ]; then
+            echo "Tag v${tag} does not match manifest version ${ver}"
+            exit 1
+          fi
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag

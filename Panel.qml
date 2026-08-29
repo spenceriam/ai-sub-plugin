@@ -51,7 +51,11 @@ Panel {
   property string notifyAddedId: ""
   property var notifyAlarm: ({})
   property var notifyProblem: ({})
-  property bool notifyReady: false
+  property string notifiedRelease: ""
+  property string installedVersion: ""
+  property string latestVersion: ""
+  property bool updateAvailable: false
+  readonly property int releaseCheckMs: 6 * 60 * 60 * 1000
   readonly property string omarchyPath: Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy"
   readonly property int tileMoveMs: 380
 
@@ -68,6 +72,9 @@ Panel {
   }
   readonly property real chromeH: (hero.implicitHeight || 0) + (tabSwitch.implicitHeight || 0) + root.sectionGap * 2
   readonly property real scrollBudget: Math.max(Style.space(96), heightCap - panel.verticalContentInset - chromeH)
+
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
 
   readonly property var keyFields: [
     { id: "kimi", label: "Kimi Code", provider: "Moonshot AI", hint: "Code Console key — not a Moonshot wallet key" },
@@ -363,17 +370,53 @@ Panel {
       if (parsed && typeof parsed === "object") {
         notifyAlarm = parsed.alarm && typeof parsed.alarm === "object" ? parsed.alarm : {}
         notifyProblem = parsed.problem && typeof parsed.problem === "object" ? parsed.problem : {}
+        notifiedRelease = String(parsed.release || "")
       }
     } catch (e) {
       notifyAlarm = {}
       notifyProblem = {}
+      notifiedRelease = ""
     }
     notifyReady = true
     root.scanUsageNotify()
   }
 
   function saveNotify() {
-    notifyFile.setText(JSON.stringify({ alarm: notifyAlarm, problem: notifyProblem }) + "\n")
+    notifyFile.setText(JSON.stringify({
+      alarm: notifyAlarm,
+      problem: notifyProblem,
+      release: notifiedRelease
+    }) + "\n")
+  }
+
+  function checkRelease() {
+    if (!releaseProcess.running) releaseProcess.running = true
+  }
+
+  function applyRelease(text) {
+    try {
+      var parsed = JSON.parse(String(text || "").trim() || "{}")
+      if (!parsed || typeof parsed !== "object") return
+      installedVersion = String(parsed.installed || "")
+      latestVersion = String(parsed.latest || "")
+      updateAvailable = parsed.ok === true && parsed.newer === true
+      if (!updateAvailable) return
+      if (latestVersion === "" || latestVersion === notifiedRelease) return
+      notifiedRelease = latestVersion
+      root.saveNotify()
+      root.sendNotify({
+        appName: "AI Subs",
+        urgency: "normal",
+        headline: "AI Subs " + latestVersion + " is out",
+        body: "Open Settings, then Update plugin."
+      })
+    } catch (e) {
+    }
+  }
+
+  function runPluginUpdate() {
+    var launcher = root.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation"
+    Quickshell.execDetached([launcher, "omarchy plugin update " + root.moduleName])
   }
 
   function scanUsageNotify() {
@@ -824,9 +867,28 @@ Panel {
     onLoadFailed: {
       root.notifyAlarm = ({})
       root.notifyProblem = ({})
+      root.notifiedRelease = ""
       root.notifyReady = true
       root.scanUsageNotify()
     }
+  }
+
+  Process {
+    id: releaseProcess
+    running: false
+    command: ["python3", usage.collectPath, "--latest-release"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyRelease(text)
+    }
+  }
+
+  Timer {
+    interval: root.releaseCheckMs
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.checkRelease()
   }
 
   Timer {
@@ -1205,6 +1267,34 @@ Panel {
                         verticalPadding: Style.spacing.controlPaddingY
                         onClicked: root.setDensity("compact")
                       }
+                    }
+                  }
+
+                  Column {
+                    width: parent.width
+                    spacing: Style.space(6)
+                    Text {
+                      width: parent.width
+                      text: {
+                        var installed = root.installedVersion !== "" ? root.installedVersion : "0.1.0"
+                        if (root.updateAvailable)
+                          return "Installed " + installed + ". " + root.latestVersion + " is out."
+                        return "Installed " + installed + "."
+                      }
+                      color: root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      wrapMode: Text.WordWrap
+                    }
+                    Button {
+                      width: parent.width
+                      text: root.updateAvailable ? "Update to " + root.latestVersion : "Update plugin"
+                      bordered: true
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      fontSize: Style.font.bodySmall
+                      verticalPadding: Style.spacing.controlPaddingY
+                      onClicked: root.runPluginUpdate()
                     }
                   }
                 }

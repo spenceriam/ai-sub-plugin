@@ -21,8 +21,24 @@ from pathlib import Path
 from typing import Any, Callable
 
 SCHEMA_VERSION = 1
-USER_AGENT = "ai-sub-monitor/0.1.0"
 TIMEOUT_SEC = 15
+RELEASE_REPO = os.environ.get("AI_SUB_MONITOR_RELEASE_REPO", "spenceriam/ai-sub-plugin")
+
+
+def plugin_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def plugin_version() -> str:
+    path = plugin_dir() / "manifest.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(data.get("version") or "").strip()
+
+
+USER_AGENT = "ai-sub-monitor/" + (plugin_version() or "0.1.0")
 PROVIDER_ORDER = ("kimi", "glm", "minimax", "ollama", "kilo", "commandcode")
 PROVIDER_ENV = {
     "kimi": "KIMI_API_KEY",
@@ -140,10 +156,11 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def usage_dir() -> Path:
+def usage_dir(*, create: bool = True) -> Path:
     state = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
     path = state / "omarchy" / "ai-sub-monitor"
-    path.mkdir(parents=True, exist_ok=True)
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
     return path
 
 
@@ -982,6 +999,115 @@ def run_one(provider_id: str) -> int:
     return 0
 
 
+def parse_semver(value: str) -> tuple[int, int, int] | None:
+    raw = str(value or "").strip()
+    if raw[:1] in ("v", "V"):
+        raw = raw[1:]
+    raw = raw.split("+", 1)[0].split("-", 1)[0]
+    parts = raw.split(".")
+    if len(parts) < 2:
+        return None
+    try:
+        major = int(parts[0])
+        minor = int(parts[1])
+        patch = int(parts[2]) if len(parts) > 2 else 0
+    except ValueError:
+        return None
+    return major, minor, patch
+
+
+def version_newer(latest: str, installed: str) -> bool:
+    left = parse_semver(latest)
+    right = parse_semver(installed)
+    if left is None or right is None:
+        return False
+    return left > right
+
+
+def check_latest_release(*, opener: Callable[..., Any] | None = None) -> dict[str, Any]:
+    installed = plugin_version()
+    repo = os.environ.get("AI_SUB_MONITOR_RELEASE_REPO", RELEASE_REPO)
+    url = f"https://api.github.com/repos/{repo}/releases/latest"
+    status, payload = http_json(url, {}, opener=opener)
+    empty = {
+        "ok": True,
+        "installed": installed,
+        "latest": "",
+        "tag": "",
+        "newer": False,
+        "url": "",
+    }
+    if status == 404:
+        return empty
+    if status != 200 or not isinstance(payload, dict):
+        return {
+            **empty,
+            "ok": False,
+            "message": "Could not check GitHub releases",
+        }
+    tag = str(payload.get("tag_name") or "").strip()
+    latest = tag[1:] if tag[:1] in ("v", "V") else tag
+    return {
+        "ok": True,
+        "installed": installed,
+        "latest": latest,
+        "tag": tag,
+        "newer": version_newer(latest, installed),
+        "url": str(payload.get("html_url") or ""),
+    }
+
+
+def allowed_data_path(path: Path) -> bool:
+    return any(path == item for item in data_paths())
+
+
+def remove_tree(path: Path) -> None:
+    for child in path.iterdir():
+        if child.is_symlink() or child.is_file():
+            child.unlink()
+        elif child.is_dir():
+            remove_tree(child)
+    path.rmdir()
+
+
+def remove_allowed_path(path: Path) -> str | None:
+    if not allowed_data_path(path):
+        return None
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return str(path)
+    if path.is_dir():
+        if path.name != "ai-sub-monitor":
+            return None
+        remove_tree(path)
+        return str(path)
+    return None
+
+
+def data_paths() -> list[Path]:
+    return [config_dir(), legacy_keys_path(), usage_dir(create=False)]
+
+
+def uninstall_user_data(*, yes: bool = False) -> dict[str, Any]:
+    pending = [str(path) for path in data_paths() if path.exists() or path.is_symlink()]
+    if not yes:
+        return {
+            "ok": False,
+            "removed": [],
+            "pending": pending,
+            "message": "Pass --yes to delete these paths",
+        }
+    removed: list[str] = []
+    skipped: list[str] = []
+    for path in data_paths():
+        gone = remove_allowed_path(path)
+        if gone:
+            removed.append(gone)
+        elif path.exists() or path.is_symlink():
+            skipped.append(str(path))
+    return {"ok": True, "removed": removed, "skipped": skipped, "pending": []}
+
+
 def probe_provider(provider_id: str) -> dict[str, Any]:
     load_env_file()
     env_name = PROVIDER_ENV[provider_id]
@@ -1008,6 +1134,17 @@ def main() -> int:
     parser.add_argument("--status", action="store_true", help="print which providers have keys; never print the keys")
     parser.add_argument("--save-keys", action="store_true", help="read one JSON object from stdin and write keys.env")
     parser.add_argument("--test", choices=PROVIDER_ORDER, help="probe one provider; print {ok,id,message}, never the key")
+    parser.add_argument(
+        "--latest-release",
+        action="store_true",
+        help="compare manifest version to the latest GitHub Release; print JSON, never keys",
+    )
+    parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="delete this plugin's key file and usage state; requires --yes",
+    )
+    parser.add_argument("--yes", action="store_true", help="confirm --uninstall")
     args = parser.parse_args()
 
     if args.save_keys:
@@ -1026,6 +1163,16 @@ def main() -> int:
     if args.test:
         print(json.dumps(probe_provider(args.test)))
         return 0
+
+    if args.latest_release:
+        result = check_latest_release()
+        print(json.dumps(result))
+        return 0 if result.get("ok") else 1
+
+    if args.uninstall:
+        result = uninstall_user_data(yes=args.yes)
+        print(json.dumps(result))
+        return 0 if result.get("ok") else 1
 
     load_env_file()
     if args.status:

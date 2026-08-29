@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Spencer",
   "license": "MIT",
-  "description": "Configured Kimi Code, GLM Coding Plan, MiniMax Token Plan, Ollama Cloud, Kilo Pass, and Command Code usage in a native Omarchy bar panel.",
+  "description": "Quick glance plugin for AI subscriptions such as Kimi Code, MiniMax Token Plan, Z.ai GLM Coding Plan, and others.",
   "kinds": ["bar-widget"],
   "activation": "on-demand",
   "entryPoints": {
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "AI Subs",
-    "description": "Donut tiles for configured coding-plan usage.",
+    "description": "Quick glance at coding-plan usage such as Kimi, MiniMax, GLM, and others.",
     "category": "AI",
     "aliases": ["ai-subs", "usage"],
     "allowMultiple": false,

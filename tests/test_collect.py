@@ -249,5 +249,104 @@ class KeyFile(unittest.TestCase):
             os.environ.pop("XDG_STATE_HOME", None)
 
 
+class ReleaseCheck(unittest.TestCase):
+    def test_semver_newer(self):
+        self.assertTrue(collect.version_newer("0.2.0", "0.1.0"))
+        self.assertTrue(collect.version_newer("v0.1.1", "0.1.0"))
+        self.assertFalse(collect.version_newer("0.1.0", "0.1.0"))
+        self.assertFalse(collect.version_newer("0.1.0", "0.2.0"))
+        self.assertFalse(collect.version_newer("nope", "0.1.0"))
+
+    def test_plugin_version_matches_manifest(self):
+        self.assertEqual(collect.plugin_version(), "0.1.0")
+
+    def test_latest_release_404_is_not_newer(self):
+        from unittest.mock import patch
+
+        with patch.object(collect, "http_json", return_value=(404, {"message": "Not Found"})):
+            result = collect.check_latest_release()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["installed"], "0.1.0")
+        self.assertFalse(result["newer"])
+        self.assertEqual(result["latest"], "")
+
+    def test_latest_release_newer_tag(self):
+        from unittest.mock import patch
+
+        payload = {
+            "tag_name": "v0.2.0",
+            "html_url": "https://github.com/spenceriam/ai-sub-plugin/releases/tag/v0.2.0",
+        }
+        with patch.object(collect, "http_json", return_value=(200, payload)):
+            result = collect.check_latest_release()
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["newer"])
+        self.assertEqual(result["latest"], "0.2.0")
+        self.assertEqual(result["tag"], "v0.2.0")
+
+
+class UninstallData(unittest.TestCase):
+    def test_dry_run_does_not_delete(self):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config"
+            state = Path(tmp) / "state"
+            os.environ["XDG_CONFIG_HOME"] = str(config)
+            os.environ["XDG_STATE_HOME"] = str(state)
+            keys = config / "ai-sub-monitor"
+            keys.mkdir(parents=True)
+            (keys / "keys.env").write_text("KIMI_API_KEY=secret\n")
+            usage = state / "omarchy" / "ai-sub-monitor"
+            usage.mkdir(parents=True)
+            (usage / "ui.json").write_text("{}\n")
+            result = collect.uninstall_user_data(yes=False)
+            self.assertFalse(result["ok"])
+            self.assertTrue((keys / "keys.env").is_file())
+            self.assertTrue((usage / "ui.json").is_file())
+            self.assertEqual(result["removed"], [])
+            os.environ.pop("XDG_CONFIG_HOME", None)
+            os.environ.pop("XDG_STATE_HOME", None)
+
+    def test_yes_deletes_only_plugin_dirs(self):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config"
+            state = Path(tmp) / "state"
+            os.environ["XDG_CONFIG_HOME"] = str(config)
+            os.environ["XDG_STATE_HOME"] = str(state)
+            keys = config / "ai-sub-monitor"
+            keys.mkdir(parents=True)
+            (keys / "keys.env").write_text("KIMI_API_KEY=secret\n")
+            other = config / "keep-me"
+            other.mkdir()
+            (other / "file").write_text("stay\n")
+            usage = state / "omarchy" / "ai-sub-monitor"
+            usage.mkdir(parents=True)
+            (usage / "ui.json").write_text("{}\n")
+            result = collect.uninstall_user_data(yes=True)
+            self.assertTrue(result["ok"])
+            self.assertFalse(keys.exists())
+            self.assertFalse(usage.exists())
+            self.assertTrue((other / "file").is_file())
+            os.environ.pop("XDG_CONFIG_HOME", None)
+            os.environ.pop("XDG_STATE_HOME", None)
+
+    def test_refuses_unrelated_path(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evil = Path(tmp) / "not-this-plugin"
+            evil.mkdir()
+            self.assertIsNone(collect.remove_allowed_path(evil))
+            self.assertTrue(evil.is_dir())
+
+
 if __name__ == "__main__":
     unittest.main()
