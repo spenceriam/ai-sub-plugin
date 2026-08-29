@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Live install is opt-in
 
-Work only in this repo (`~/GitHub/ai-sub-monitor`).
+Work only in this repo (`~/GitHub/ai-sub-monitor`, GitHub: `spenceriam/ai-sub-plugin`).
 
 Do not rsync/cp into `~/.config/omarchy/plugins/io.github.spenceriam.ai-sub-monitor/` and do not run `omarchy plugin enable` or `rescanPlugins` unless the current message says to install or deploy.
 

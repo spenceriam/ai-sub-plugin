@@ -77,7 +77,7 @@ Panel {
     { id: "kilo", label: "Kilo Pass", provider: "Kilo", hint: "Gateway API key from the bottom of app.kilo.ai/profile — not a BYOK provider key" },
     { id: "commandcode", label: "Command Code", provider: "Command Code", hint: "Studio API key from commandcode.ai — same key as the CLI" }
   ]
-  readonly property string requestPlanUrl: "https://github.com/spenceriam/ai-sub-monitor/issues/new?title=Request%20a%20plan&body=Plan%20name%3A%0AProvider%20%28and%20site%29%3A%0ADocs%20or%20pricing%20URL%3A%0A"
+  readonly property string requestPlanUrl: "https://github.com/spenceriam/ai-sub-plugin/issues/new?title=Request%20a%20plan&body=Plan%20name%3A%0AProvider%20%28and%20site%29%3A%0ADocs%20or%20pricing%20URL%3A%0A"
 
   readonly property bool alarming: {
     for (var i = 0; i < providers.length; i++) {
