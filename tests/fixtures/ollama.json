@@ -1,0 +1,24 @@
+{
+  "activity": {
+    "cost": "0.55766",
+    "period": {
+      "type": "last_4_weeks",
+      "starting_at": "2026-08-03T00:00:00Z",
+      "ending_at": "2026-08-27T22:03:36.387296118Z"
+    },
+    "models": [{ "name": "kimi-k3", "request_count": 17, "cost": "0.55766" }]
+  },
+  "limits": {
+    "session": { "usage": 0, "models": [] },
+    "weekly": {
+      "usage": 0.105,
+      "models": [
+        { "name": "minimax-m3", "request_count": 149 },
+        { "name": "deepseek-v4-pro:0813", "request_count": 402 },
+        { "name": "glm-5.3-flash", "request_count": 220 },
+        { "name": "kimi-k2.7-code", "request_count": 1 },
+        { "name": "deepseek-v4-flash:0731", "request_count": 6 }
+      ]
+    }
+  }
+}

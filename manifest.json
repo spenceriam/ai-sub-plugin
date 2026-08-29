@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.spenceriam.ai-sub-monitor",
+  "name": "AI Sub Monitor",
+  "version": "0.1.0",
+  "author": "Spencer",
+  "license": "MIT",
+  "description": "Configured Kimi Code, GLM Coding Plan, MiniMax Token Plan, Ollama Cloud, Kilo Pass, and Command Code usage in a native Omarchy bar panel.",
+  "kinds": ["bar-widget"],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "AI Subs",
+    "description": "Donut tiles for configured coding-plan usage.",
+    "category": "AI",
+    "aliases": ["ai-subs", "usage"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 300
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 30,
+        "max": 3600,
+        "step": 30,
+        "defaultValue": 300
+      }
+    ]
+  }
+}

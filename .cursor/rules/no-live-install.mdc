@@ -1,0 +1,12 @@
+---
+description: Do not install this plugin into the live Omarchy plugins dir unless Spencer asks this turn.
+alwaysApply: true
+---
+
+# Live install is opt-in
+
+Work only in this repo (`~/GitHub/ai-sub-monitor`).
+
+Do not rsync/cp into `~/.config/omarchy/plugins/io.github.spenceriam.ai-sub-monitor/` and do not run `omarchy plugin enable` or `rescanPlugins` unless the current message says to install or deploy.
+
+`omarchy plugin validate` against **this** folder is allowed. Collectors may be run from this folder. They must not write into `~/.config/omarchy/`.

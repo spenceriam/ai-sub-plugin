@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ai-sub-monitor mockup — donut tiles</title>
+  <link rel="stylesheet" href="tokens.css?v=20">
+  <link rel="stylesheet" href="mockup.css?v=20">
+</head>
+<body>
+  <div class="desktop">
+    <header class="bar">
+      <div class="bar-left">
+        <span class="ws current">1</span>
+        <span class="ws">2</span>
+        <span class="ws">3</span>
+      </div>
+      <div class="bar-right">
+        <button class="bar-icon" id="bar-btn" type="button" aria-pressed="true" aria-controls="panel" title="Open AI subs">󰞯</button>
+        <span class="clock" id="clock">Thu 17:18</span>
+      </div>
+    </header>
+
+    <div class="panel-anchor">
+      <aside class="panel" id="panel" data-density="comfy" aria-label="AI subscription usage">
+        <div class="panel-chrome" id="panel-chrome">
+          <div class="hero">
+            <div class="hero-mark">󰞯</div>
+            <div class="hero-labels">
+              <h1 class="hero-title">AI Subs</h1>
+              <p class="hero-meta" id="hero-meta">Your configured AI subscriptions at a glance</p>
+            </div>
+          </div>
+          <div class="tabs" role="tablist">
+            <button type="button" class="tab" id="tab-usage" role="tab" aria-selected="true">Usage (0 plans)</button>
+            <button type="button" class="tab" id="tab-settings" role="tab" aria-selected="false">Settings</button>
+          </div>
+        </div>
+        <div class="panel-scroll" id="panel-scroll">
+          <div id="usage-pane"></div>
+          <div id="settings-pane" hidden></div>
+        </div>
+        <div class="panel-sb" id="panel-sb" hidden>
+          <div class="panel-sb-thumb" id="panel-sb-thumb"></div>
+        </div>
+        <button type="button" class="filler-zoom" id="filler-zoom" hidden aria-label="Close filler art">
+          <img class="filler-back" src="filler-0.png" alt="">
+          <img class="filler-front" src="filler-0.png" alt="">
+        </button>
+      </aside>
+    </div>
+  </div>
+
+  <footer class="guide">
+    2-column donut tiles. Click a collapsed tile to open it; click-and-hold (or drag) to reorder.
+    Open tiles stay put until you click to collapse. Hero + Usage/Settings stay pinned.
+    Left-click the donut for Usage, right-click for Settings. First open with no plans is the Settings picker.
+    Comfy padding is the default (Omarchy panelPadding 18 / panelGap 14). Compact is a Settings toggle.
+    Ring uses foreground (urgent if ≥90%); leftover uses the meter track. No extra hues.
+  </footer>
+
+  <script>
+    const ALL_PLANS = [
+      {
+        id: "kimi",
+        title: "Kimi Code",
+        provider: "Moonshot AI",
+        meta: "Standard",
+        hint: "Code Console key — not a Moonshot wallet key",
+        limits: [
+          { title: "Session", percent: 0, resetAt: "2026-08-28T02:18:43.898399Z" },
+          { title: "Weekly", percent: 0.07, resetAt: "2026-09-01T14:18:43.898399Z" }
+        ]
+      },
+      {
+        id: "glm",
+        title: "GLM Coding Plan",
+        provider: "Z.ai",
+        meta: "Max",
+        hint: "Z.ai coding-plan key. Raw Authorization header.",
+        limits: [
+          { title: "Session", percent: 0, resetNote: "5 hours after use" },
+          { title: "Weekly", percent: null, resetNote: "every 7 days" }
+        ]
+      },
+      {
+        id: "minimax",
+        title: "MiniMax Token Plan",
+        provider: "MiniMax",
+        meta: "Token Plan",
+        hint: "Subscription Key — not a PAYG sk-api- key",
+        limits: [
+          { title: "Session", percent: 0, resetAt: "2026-08-28T00:00:00Z" },
+          { title: "Weekly", unlimited: true }
+        ]
+      },
+      {
+        id: "ollama",
+        title: "Ollama Cloud",
+        provider: "Ollama",
+        meta: "Pro",
+        hint: "Key from ollama.com/settings/keys",
+        limits: [
+          { title: "Session", percent: 0, resetNote: "every 5 hours" },
+          { title: "Weekly", percent: 0.105, resetNote: "every 7 days" }
+        ],
+        models: [
+          { name: "deepseek-v4-pro:0813", total: 402 },
+          { name: "glm-5.3-flash", total: 220 },
+          { name: "minimax-m3", total: 149 },
+          { name: "deepseek-v4-flash:0731", total: 6 }
+        ]
+      },
+      {
+        id: "kilo",
+        title: "Kilo Pass",
+        provider: "Kilo",
+        meta: "Pro · Yearly · ending",
+        hint: "Gateway API key from the bottom of app.kilo.ai/profile — not a BYOK provider key",
+        limits: [
+          {
+            title: "This month",
+            percent: 0,
+            valueLabel: "$0.00 / $73.50",
+            resetAt: "2026-09-21T00:00:00Z",
+            resetNote: "cancellation pending · $49.00 paid + $24.50 bonus"
+          }
+        ],
+        balance: { remaining: 208.70, currency: "USD" }
+      },
+      {
+        id: "commandcode",
+        title: "Command Code",
+        provider: "Command Code",
+        meta: "Go",
+        hint: "Studio API key from commandcode.ai — same key as the CLI",
+        limits: [
+          { title: "5-hour", percent: 1.2216 / 3, resetAt: "2026-08-14T09:33:20Z" },
+          { title: "Weekly", percent: 1.2216 / 6, resetAt: "2026-08-17T20:53:20Z" },
+          { title: "This month", percent: 1.2216 / 10, valueLabel: "$1.22 / $10.00", resetAt: "2026-06-06T07:28:50.000Z" }
+        ]
+      }
+    ];
+
+    function emptyPlanMap(value) {
+      const next = {};
+      ALL_PLANS.forEach((p) => { next[p.id] = value; });
+      return next;
+    }
+
+    const DEFAULT_CONFIGURED = { ...emptyPlanMap(false), kimi: true, minimax: true, ollama: true, kilo: true, commandcode: true };
+    const STORAGE_KEY = "ai-sub-configured-v2";
+    const UI_KEY = "ai-sub-ui-v2";
+    const params = new URLSearchParams(location.search);
+
+    function loadConfigured() {
+      if (params.get("onboard") === "1") return emptyPlanMap(false);
+      if (params.has("only")) {
+        const next = emptyPlanMap(false);
+        String(params.get("only") || "").split(",").forEach((id) => {
+          const key = id.trim();
+          if (key) next[key] = true;
+        });
+        return next;
+      }
+      try {
+        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+        if (parsed && typeof parsed === "object") {
+          const merged = { ...DEFAULT_CONFIGURED, ...parsed };
+          if (ALL_PLANS.some((p) => merged[p.id])) return merged;
+        }
+      } catch (e) {}
+      return { ...DEFAULT_CONFIGURED };
+    }
+
+    function parseExpanded(value) {
+      if (Array.isArray(value)) {
+        return [...new Set(value.map((id) => String(id || "").trim()).filter(Boolean))];
+      }
+      if (typeof value === "string" && value.trim() !== "") {
+        return [...new Set(value.split(",").map((id) => id.trim()).filter(Boolean))];
+      }
+      return [];
+    }
+
+    function isOpen(id) {
+      return ui.expanded.indexOf(id) >= 0;
+    }
+
+    function toggleExpand(id) {
+      if (!id) return;
+      const i = ui.expanded.indexOf(id);
+      ui.expanded = i >= 0
+        ? ui.expanded.filter((x) => x !== id)
+        : ui.expanded.concat([id]);
+    }
+
+    function loadUi() {
+      let density = "comfy";
+      let expanded = [];
+      let order = [];
+      let hidden = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem(UI_KEY) || "null");
+        if (parsed && typeof parsed === "object") {
+          if (parsed.density === "compact") density = "compact";
+          expanded = parseExpanded(parsed.expanded);
+          order = parseExpanded(parsed.order);
+          hidden = parseExpanded(parsed.hidden);
+        }
+      } catch (e) {}
+      if (params.get("density") === "compact") density = "compact";
+      if (params.has("expanded")) expanded = parseExpanded(params.get("expanded"));
+      if (params.has("order")) order = parseExpanded(params.get("order"));
+      if (params.has("hidden")) hidden = parseExpanded(params.get("hidden"));
+      return { density, expanded, order, hidden };
+    }
+
+    let configured = loadConfigured();
+    let ui = loadUi();
+    if ((ui.hidden || []).length && !ALL_PLANS.some((p) => configured[p.id] && !isHidden(p.id))) {
+      ui.hidden = [];
+    }
+    const noPlans = !ALL_PLANS.some((p) => configured[p.id]);
+    let tab = params.get("tab") === "usage"
+      ? "usage"
+      : (params.get("tab") === "settings" || params.get("onboard") === "1" || noPlans ? "settings" : "usage");
+    let panelOpen = true;
+    let fillerOpen = false;
+    let settingsPlan = "";
+    let testState = "";
+    let testMessage = "";
+    const drafts = emptyPlanMap("");
+    const FILLERS = [
+      "filler-0.png",
+      "filler-1.png",
+      "filler-2.png",
+      "filler-3.png",
+      "filler-4.png",
+      "filler-5.png"
+    ];
+    const FILLER_ROTATE_MS = 30 * 60 * 1000;
+    let fillerIndex = Math.floor(Math.random() * FILLERS.length);
+    FILLERS.forEach((src) => { const img = new Image(); img.src = src; });
+
+    function persistUi() {
+      if (params.has("density") || params.has("expanded") || params.has("order") || params.has("hidden")) return;
+      localStorage.setItem(UI_KEY, JSON.stringify(ui));
+    }
+
+    function persistConfigured() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(configured));
+    }
+
+    function headline(p) {
+      const limits = p.limits || [];
+      const best = limits.reduce((acc, w) => {
+        if (w.unlimited || !(w.percent >= 0)) return acc;
+        return !acc || w.percent > acc.percent ? w : acc;
+      }, null);
+      if (best) {
+        return { pct: best.percent, text: Math.round(best.percent * 100) + "%", alarm: best.percent >= 0.9 };
+      }
+      if (limits.some((w) => w.unlimited)) return { pct: 0, text: "∞", alarm: false };
+      return { pct: 0, text: "—", alarm: false };
+    }
+
+    function mergeOrder(have, order) {
+      const out = [];
+      for (const id of order || []) {
+        if (have.includes(id) && !out.includes(id)) out.push(id);
+      }
+      for (const id of have) {
+        if (!out.includes(id)) out.push(id);
+      }
+      return out;
+    }
+
+    function moveId(ids, id, toIndex) {
+      const next = ids.filter((x) => x !== id);
+      next.splice(Math.max(0, Math.min(toIndex, next.length)), 0, id);
+      return next;
+    }
+
+    function configuredList() {
+      const have = ALL_PLANS.filter((p) => configured[p.id] && !isHidden(p.id));
+      const byId = Object.fromEntries(have.map((p) => [p.id, p]));
+      return mergeOrder(have.map((p) => p.id), ui.order || []).map((id) => byId[id]);
+    }
+
+    function isHidden(id) {
+      return (ui.hidden || []).indexOf(id) >= 0;
+    }
+
+    function toggleHidden(id) {
+      if (!id || !configured[id]) return;
+      const hidden = ui.hidden || [];
+      ui.hidden = isHidden(id)
+        ? hidden.filter((x) => x !== id)
+        : hidden.concat([id]);
+      persistUi();
+    }
+
+    function eyeHtml(id) {
+      const hiding = isHidden(id);
+      const label = hiding ? "Show on Usage" : "Hide from Usage";
+      return `<button type="button" class="plan-eye" data-hide="${id}" aria-pressed="${hiding}" aria-label="${label}" title="${label}">${hiding ? "󰈉" : "󰈈"}</button>`;
+    }
+
+    function needsSetup() {
+      return !ALL_PLANS.some((p) => configured[p.id]);
+    }
+
+    function formatDuration(ms) {
+      if (!(ms > 0)) return "now";
+      const minutes = Math.floor(ms / 60000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      if (days > 0) return days + "d " + (hours % 24) + "h";
+      if (hours > 0) return hours + "h " + (minutes % 60) + "m";
+      return Math.max(1, minutes) + "m";
+    }
+
+    function resetText(resetAt, now) {
+      if (!resetAt) return "";
+      const ms = Date.parse(resetAt) - now;
+      if (!isFinite(ms)) return "";
+      return ms <= 0 ? "Resets now" : "Resets in " + formatDuration(ms);
+    }
+
+    function resetLine(w, now) {
+      const countdown = resetText(w.resetAt, now);
+      const note = w.resetNote || "";
+      const head = countdown
+        ? (w.valueLabel ? countdown.replace(/^Resets/, "Refills") : countdown)
+        : "";
+      if (head && note) return head + " · " + note;
+      if (head) return head;
+      if (!note) return "";
+      if (note.startsWith("every") || note.includes("hours") || note.includes("after"))
+        return "Resets " + note;
+      return note;
+    }
+
+    function limitHtml(w, now) {
+      if (w.unlimited) {
+        return `<div class="limit">
+          <div class="limit-top">
+            <span class="limit-label">${w.title}</span>
+            <span class="limit-value unlimited">Unlimited</span>
+          </div>
+          <div class="meter unlimited"><span style="width:0"></span></div>
+          <p class="reset">Not metered on this tier</p>
+        </div>`;
+      }
+      const known = typeof w.percent === "number" && w.percent >= 0;
+      const pct = known ? Math.round(w.percent * 100) : null;
+      const alarm = known && w.percent >= 0.9;
+      const reset = resetLine(w, now);
+      return `<div class="limit">
+        <div class="limit-top">
+          <span class="limit-label">${w.title}</span>
+          <span class="limit-value${alarm ? " alarm" : ""}">${w.valueLabel || (known ? pct + "%" : "—")}</span>
+        </div>
+        <div class="meter${alarm ? " alarm" : ""}"><span style="width:${known ? pct : 0}%"></span></div>
+        ${reset ? `<p class="reset">${reset}</p>` : ""}
+      </div>`;
+    }
+
+    function balanceHtml(p) {
+      const b = p.balance;
+      if (!b || typeof b.remaining !== "number") return "";
+      const amount = "$" + Number(b.remaining).toFixed(2);
+      return `<section class="section">
+          <h2 class="section-head">BALANCE</h2>
+          <div class="limit-top">
+            <span class="limit-label">Remaining credits</span>
+            <span class="limit-value">${amount}</span>
+          </div>
+        </section>`;
+    }
+    function modelsHtml(p) {
+      const models = p.models || [];
+      if (!models.length) return "";
+      const peak = Math.max(1, models[0].total);
+      const rows = models.map((row) => {
+        const share = (row.total / peak) * 100;
+        return `<div class="model-row" style="--share:${share}%">
+          <span class="name">${row.name}</span>
+          <span class="count">${row.total}</span>
+        </div>`;
+      }).join("");
+      return `<div class="sep"></div>
+        <section class="section">
+          <h2 class="section-head">REQUESTS BY MODEL</h2>
+          <div class="model-list">${rows}</div>
+        </section>`;
+    }
+
+    function tileHtml(p, now, stripe) {
+      const open = isOpen(p.id);
+      const peak = headline(p);
+      const ring = peak.alarm ? "var(--urgent)" : "var(--fg)";
+      const details = open ? `<div class="tile-details">
+          <div>
+            <div class="tile-name">${p.title}</div>
+            <div class="tile-meta">${p.meta}</div>
+          </div>
+          ${balanceHtml(p)}
+          <section class="section">
+            <h2 class="section-head">LIMITS</h2>
+            ${p.limits.map((w) => limitHtml(w, now)).join("")}
+          </section>
+          ${modelsHtml(p)}
+        </div>` : "";
+      return `<article class="tile${open ? " is-open" : ""}" data-toggle="${p.id}" data-stripe="${(Number(stripe) || 0) % 2}" role="button" tabindex="0" aria-expanded="${open ? "true" : "false"}">
+        <div class="tile-face">
+          <div class="donut" style="--p:${Math.round(peak.pct * 100)};--ring:${ring}">
+            <span class="donut-hole">${peak.text}</span>
+          </div>
+          ${open ? "" : `<span class="tile-name">${p.title}</span><span class="tile-meta">${p.meta}</span>`}
+        </div>
+        ${details}
+      </article>`;
+    }
+
+    function fillerHtml() {
+      const src = FILLERS[fillerIndex];
+      return `<article class="tile filler" data-filler="1" role="button" tabindex="0" aria-label="Filler art">
+        <img class="filler-back" src="${src}" alt="">
+        <img class="filler-front" src="${src}" alt="">
+      </article>`;
+    }
+
+    function paintFiller(fade) {
+      const src = FILLERS[fillerIndex];
+      document.querySelectorAll(".tile.filler, #filler-zoom").forEach((el) => {
+        const front = el.querySelector(".filler-front");
+        const back = el.querySelector(".filler-back");
+        if (!front || !back) return;
+        if (!fade) {
+          back.src = src;
+          front.src = src;
+          front.style.opacity = "1";
+          return;
+        }
+        back.src = front.getAttribute("src") || src;
+        front.style.opacity = "0";
+        const preload = new Image();
+        preload.onload = () => {
+          front.src = src;
+          requestAnimationFrame(() => { front.style.opacity = "1"; });
+        };
+        preload.src = src;
+      });
+    }
+
+    function cycleFiller() {
+      let next = Math.floor(Math.random() * FILLERS.length);
+      if (FILLERS.length > 1) {
+        while (next === fillerIndex) next = Math.floor(Math.random() * FILLERS.length);
+      }
+      fillerIndex = next;
+      paintFiller(true);
+    }
+
+    function usageCells(plans) {
+      if (plans.length <= 1) return plans.map((plan) => ({ kind: "plan", plan }));
+      const cells = [];
+      let col = 0;
+      for (const plan of plans) {
+        const span = isOpen(plan.id) ? 2 : 1;
+        if (span === 2 && col === 1) {
+          cells.push({ kind: "filler" });
+          col = 0;
+        }
+        cells.push({ kind: "plan", plan });
+        col = span === 2 ? 0 : (col + 1) % 2;
+      }
+      if (col === 1) cells.push({ kind: "filler" });
+      return cells;
+    }
+
+    function usageHtml() {
+      const plans = configuredList();
+      const hasKeys = ALL_PLANS.some((p) => configured[p.id]);
+      if (!plans.length) {
+        return `<div class="empty">
+          <p>${hasKeys
+            ? "All plans are hidden.<br>Click the eye in Settings to show a tile."
+            : "No plans yet.<br>Pick a service in Settings and paste its key."}</p>
+          <button type="button" class="tab" id="empty-settings">Open Settings</button>
+        </div>`;
+      }
+      ui.expanded = ui.expanded.filter((id) => plans.some((p) => p.id === id));
+      const now = Date.now();
+      const single = plans.length === 1 ? " single" : "";
+      const inner = usageCells(plans).map((cell) =>
+        cell.kind === "filler"
+          ? fillerHtml()
+          : tileHtml(cell.plan, now, plans.findIndex((p) => p.id === cell.plan.id))
+      ).join("");
+      return `<div class="tile-grid${single}">${inner}</div>`;
+    }
+
+    function settingsHtml() {
+      if (settingsPlan) {
+        const p = ALL_PLANS.find((row) => row.id === settingsPlan);
+        if (!p) return "";
+        const saved = !!configured[p.id];
+        const testing = testState === "testing";
+        return `<button type="button" class="tab" id="settings-back">All plans</button>
+          <div class="key-row">
+            <div class="key-top">
+              <span class="key-label">${p.title}</span>
+              <span class="plan-pick-actions">
+                ${saved ? eyeHtml(p.id) : ""}
+                <span class="key-state">${saved ? "Saved" : "Not set"}</span>
+              </span>
+            </div>
+            ${p.provider ? `<p class="key-hint">${p.provider}</p>` : ""}
+            <p class="key-hint">${p.hint}</p>
+            <input class="key-input" type="password" data-id="${p.id}" autocomplete="off" placeholder="${saved ? "Leave blank to keep" : "Paste key"}">
+            ${saved ? `<button type="button" class="tab remove" data-remove="${p.id}">Remove key</button>` : ""}
+          </div>
+          <button type="button" class="tab" id="save-test">${testing ? "Checking key…" : "Save and test"}</button>
+          ${testMessage ? `<p class="test-msg${testState === "fail" ? " fail" : ""}">${testMessage}</p>` : ""}
+          ${testState === "ok" ? `<button type="button" class="tab" id="view-usage">View usage</button>` : ""}`;
+      }
+      const picks = ALL_PLANS.map((p) => {
+        const saved = !!configured[p.id];
+        const hidden = saved && isHidden(p.id);
+        return `<div class="plan-pick" data-plan="${p.id}" role="button" tabindex="0">
+          <span class="plan-pick-copy${hidden ? " is-hidden" : ""}">
+            <span class="key-label">${p.title}</span>
+            <span class="plan-pick-provider">${p.provider || ""}</span>
+          </span>
+          <span class="plan-pick-actions">
+            ${saved ? eyeHtml(p.id) : ""}
+            <span class="key-state">${saved ? "Saved" : "Not set"}</span>
+          </span>
+        </div>`;
+      }).join("");
+      return `<p class="settings-copy">Pick a plan, then paste its key. Saved plans: the eye hides the Usage tile without removing the key.</p>
+        <div class="plan-list">${picks}</div>
+        <a class="plan-request" id="plan-request" href="https://github.com/spenceriam/ai-sub-monitor/issues/new?title=Request%20a%20plan&body=Plan%20name%3A%0AProvider%20%28and%20site%29%3A%0ADocs%20or%20pricing%20URL%3A%0A" target="_blank" rel="noopener">Don't see your plan? Request it on GitHub</a>
+        <div>
+          <p class="settings-copy">Density. Comfy is the Omarchy default (panel padding 18, gap 14).</p>
+          <div class="density-row">
+            <button type="button" class="tab" data-density="comfy" aria-selected="${ui.density === "comfy"}">Comfy</button>
+            <button type="button" class="tab" data-density="compact" aria-selected="${ui.density === "compact"}">Compact</button>
+          </div>
+        </div>`;
+    }
+
+    function mockTestKey(id) {
+      const value = String(drafts[id] || "").trim();
+      const saved = !!configured[id];
+      if (!value && !saved) {
+        testState = "fail";
+        testMessage = "Paste a key first";
+        render();
+        armClickLock();
+        return;
+      }
+      testState = "testing";
+      testMessage = "Checking key…";
+      render();
+      armClickLock();
+      window.setTimeout(() => {
+        const plan = ALL_PLANS.find((row) => row.id === id);
+        if (value && (value.toLowerCase() === "fail" || value.length < 8)) {
+          testState = "fail";
+          testMessage = plan ? plan.hint : "Rejected";
+          render();
+          armClickLock();
+          return;
+        }
+        if (value) configured[id] = true;
+        drafts[id] = "";
+        persistConfigured();
+        testState = "ok";
+        testMessage = "Connected";
+        render();
+        armClickLock();
+      }, 400);
+    }
+
+    function alarming() {
+      return configuredList().some((p) =>
+        (p.limits || []).some((w) => !w.unlimited && w.percent >= 0.9)
+      );
+    }
+
+    function setTab(name) {
+      if (drag) endDrag(true);
+      fillerOpen = false;
+      tab = name === "settings" ? "settings" : "usage";
+      if (tab !== "settings") {
+        settingsPlan = "";
+        testState = "";
+        testMessage = "";
+      }
+      render();
+    }
+
+    function syncScrollbar() {
+      const panel = document.getElementById("panel");
+      const chrome = document.getElementById("panel-chrome");
+      const scroll = document.getElementById("panel-scroll");
+      const track = document.getElementById("panel-sb");
+      const thumb = document.getElementById("panel-sb-thumb");
+      panel.style.setProperty("--chrome-h", chrome.offsetHeight + "px");
+      const overflow = scroll.scrollHeight > scroll.clientHeight + 1;
+      track.hidden = !overflow;
+      panel.classList.toggle("is-scrollable", overflow);
+      if (!overflow) return;
+      const view = scroll.clientHeight;
+      const total = scroll.scrollHeight;
+      const trackH = track.clientHeight;
+      const thumbH = Math.max(24, (view / total) * trackH);
+      const maxTop = Math.max(0, trackH - thumbH);
+      const range = Math.max(1, total - view);
+      const top = (scroll.scrollTop / range) * maxTop;
+      thumb.style.height = thumbH + "px";
+      thumb.style.transform = "translateY(" + top + "px)";
+    }
+
+    const TILE_MS = 380;
+    const TILE_EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
+    const HOLD_MS = 160;
+    const DRAG_SLOP = 8;
+
+    let skipClick = false;
+    let drag = null;
+
+    function usageGrid() {
+      return document.querySelector("#usage-pane .tile-grid");
+    }
+
+    function restRect(el) {
+      const r = el.getBoundingClientRect();
+      const t = getComputedStyle(el).transform;
+      if (!t || t === "none") {
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      }
+      const m = new DOMMatrix(t);
+      return {
+        left: r.left - m.e,
+        top: r.top - m.f,
+        width: r.width,
+        height: r.height,
+        right: r.left - m.e + r.width,
+        bottom: r.top - m.f + r.height
+      };
+    }
+
+    function placeCells(grid) {
+      const plans = configuredList();
+      const cells = usageCells(plans);
+      const byId = {};
+      grid.querySelectorAll("[data-toggle]").forEach((el) => {
+        byId[el.dataset.toggle] = el;
+      });
+      const fillers = [...grid.querySelectorAll("[data-filler]")];
+      let fi = 0;
+      cells.forEach((cell, i) => {
+        if (cell.kind === "plan") {
+          const el = byId[cell.plan.id];
+          if (!el) return;
+          el.style.order = String(i);
+          el.dataset.stripe = String(plans.findIndex((p) => p.id === cell.plan.id) % 2);
+        } else {
+          let f = fillers[fi++];
+          if (!f) {
+            const wrap = document.createElement("div");
+            wrap.innerHTML = fillerHtml();
+            f = wrap.firstElementChild;
+            grid.appendChild(f);
+          }
+          f.hidden = false;
+          f.style.order = String(i);
+        }
+      });
+      for (; fi < fillers.length; fi++) {
+        fillers[fi].hidden = true;
+        fillers[fi].style.order = "99";
+      }
+    }
+
+    function flipPlace(grid) {
+      const nodes = [...grid.children].filter((el) => !el.hidden && !el.classList.contains("is-placeholder"));
+      const first = new Map(nodes.map((el) => [el, el.getBoundingClientRect()]));
+      nodes.forEach((el) => {
+        if (el._flip) {
+          el._flip.cancel();
+          el._flip = null;
+        }
+        el.style.transform = "none";
+      });
+      placeCells(grid);
+      nodes.forEach((el) => {
+        const prev = first.get(el);
+        if (!prev) return;
+        const last = el.getBoundingClientRect();
+        const dx = prev.left - last.left;
+        const dy = prev.top - last.top;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+        el._flip = el.animate(
+          [{ transform: "translate(" + dx + "px," + dy + "px)" }, { transform: "translate(0,0)" }],
+          { duration: TILE_MS, easing: TILE_EASE }
+        );
+        el._flip.addEventListener("finish", () => { el._flip = null; });
+      });
+    }
+
+    function indexAtRestSlot(clientX, clientY, order, current) {
+      const grid = usageGrid();
+      if (!grid) return current;
+      let hit = -1;
+      order.forEach((id, i) => {
+        const el = grid.querySelector('[data-toggle="' + id + '"]');
+        if (!el) return;
+        const r = restRect(el);
+        const insetX = Math.min(24, r.width * 0.18);
+        const insetY = Math.min(24, r.height * 0.18);
+        if (
+          clientX >= r.left + insetX &&
+          clientX <= r.right - insetX &&
+          clientY >= r.top + insetY &&
+          clientY <= r.bottom - insetY
+        ) {
+          hit = i;
+        }
+      });
+      return hit < 0 ? current : hit;
+    }
+
+    function startDrag(tile, grabX, grabY, clientX, clientY) {
+      const grid = usageGrid();
+      if (!grid || drag) return;
+      const id = tile.dataset.toggle;
+      const rect = tile.getBoundingClientRect();
+      const ghost = tile.cloneNode(true);
+      ghost.removeAttribute("data-toggle");
+      ghost.removeAttribute("tabindex");
+      ghost.classList.add("tile-ghost");
+      ghost.classList.remove("is-placeholder");
+      ghost.style.width = rect.width + "px";
+      ghost.style.left = clientX - grabX + "px";
+      ghost.style.top = clientY - grabY + "px";
+      ghost.style.transform = "scale(1.04)";
+      document.body.appendChild(ghost);
+      tile.classList.add("is-placeholder");
+      document.documentElement.classList.add("is-tile-dragging");
+      const ids = configuredList().map((p) => p.id);
+      drag = {
+        id,
+        tile,
+        ghost,
+        grabX,
+        grabY,
+        insert: Math.max(0, ids.indexOf(id))
+      };
+    }
+
+    function onDragMove(clientX, clientY) {
+      if (!drag) return;
+      drag.ghost.style.left = clientX - drag.grabX + "px";
+      drag.ghost.style.top = clientY - drag.grabY + "px";
+      const ids = configuredList().map((p) => p.id);
+      const idx = indexAtRestSlot(clientX, clientY, ids, drag.insert);
+      if (idx === drag.insert) return;
+      drag.insert = idx;
+      ui.order = moveId(ids, drag.id, idx);
+      const grid = usageGrid();
+      if (grid) flipPlace(grid);
+    }
+
+    function endDrag(commit) {
+      if (!drag) return;
+      const tile = drag.tile;
+      const ghost = drag.ghost;
+      drag = null;
+      document.documentElement.classList.remove("is-tile-dragging");
+      if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      if (tile) {
+        tile.classList.remove("is-placeholder");
+        if (tile._flip) {
+          tile._flip.cancel();
+          tile._flip = null;
+        }
+        tile.style.transform = "none";
+      }
+      const grid = usageGrid();
+      if (grid) {
+        grid.querySelectorAll(".tile").forEach((el) => {
+          if (el._flip) {
+            el._flip.cancel();
+            el._flip = null;
+          }
+          el.style.transform = "none";
+        });
+      }
+      skipClick = true;
+      window.setTimeout(() => { skipClick = false; }, 0);
+      if (commit) persistUi();
+      requestAnimationFrame(syncScrollbar);
+    }
+
+    let clickLock = false;
+
+    function armClickLock() {
+      clickLock = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => { clickLock = false; });
+      });
+    }
+
+    function render() {
+      if (drag) return;
+      const scroll = document.getElementById("panel-scroll");
+      const y = scroll.scrollTop;
+      const n = configuredList().length;
+      document.getElementById("panel").dataset.density = ui.density;
+      document.getElementById("tab-usage").textContent =
+        n === 1 ? "Usage (1 plan)" : "Usage (" + n + " plans)";
+      document.getElementById("bar-btn").classList.toggle("alarm", alarming());
+      document.getElementById("filler-zoom").hidden = !fillerOpen;
+      document.getElementById("tab-usage").setAttribute("aria-selected", String(tab === "usage"));
+      document.getElementById("tab-settings").setAttribute("aria-selected", String(tab === "settings"));
+
+      const usagePane = document.getElementById("usage-pane");
+      const settingsPane = document.getElementById("settings-pane");
+      if (tab === "usage") {
+        usagePane.hidden = false;
+        settingsPane.hidden = true;
+        usagePane.innerHTML = usageHtml();
+      } else {
+        usagePane.hidden = true;
+        settingsPane.hidden = false;
+        settingsPane.innerHTML = settingsHtml();
+        settingsPane.querySelectorAll("input[data-id]").forEach((input) => {
+          const value = drafts[input.dataset.id];
+          if (value) input.value = value;
+        });
+        const saveBtn = document.getElementById("save-test");
+        if (saveBtn) {
+          saveBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            mockTestKey(settingsPlan);
+          });
+        }
+        const backBtn = document.getElementById("settings-back");
+        if (backBtn) {
+          backBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (clickLock) return;
+            settingsPlan = "";
+            testState = "";
+            testMessage = "";
+            render();
+          });
+        }
+        const viewBtn = document.getElementById("view-usage");
+        if (viewBtn) {
+          viewBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setTab("usage");
+          });
+        }
+      }
+      scroll.scrollTop = y;
+      paintFiller(false);
+      requestAnimationFrame(syncScrollbar);
+    }
+
+    document.getElementById("tab-usage").addEventListener("click", () => setTab("usage"));
+    document.getElementById("tab-settings").addEventListener("click", () => setTab("settings"));
+
+    document.getElementById("usage-pane").addEventListener("click", (e) => {
+      if (skipClick) {
+        skipClick = false;
+        return;
+      }
+      if (e.target.closest("#empty-settings")) {
+        setTab("settings");
+        return;
+      }
+      if (e.target.closest("[data-filler]")) {
+        fillerOpen = true;
+        render();
+        return;
+      }
+      const toggle = e.target.closest("[data-toggle]");
+      if (!toggle) return;
+      const id = toggle.dataset.toggle;
+      toggleExpand(id);
+      persistUi();
+      render();
+    });
+    document.getElementById("usage-pane").addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest("[data-filler]")) return;
+      const tile = e.target.closest("[data-toggle]");
+      if (!tile || tile.classList.contains("is-open")) return;
+      if (configuredList().length < 2) return;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const rect = tile.getBoundingClientRect();
+      const grabX = startX - rect.left;
+      const grabY = startY - rect.top;
+      const hold = window.setTimeout(() => {
+        startDrag(tile, grabX, grabY, startX, startY);
+      }, HOLD_MS);
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (!drag && dx * dx + dy * dy > DRAG_SLOP * DRAG_SLOP) {
+          window.clearTimeout(hold);
+          startDrag(tile, grabX, grabY, ev.clientX, ev.clientY);
+        }
+        if (drag) {
+          ev.preventDefault();
+          onDragMove(ev.clientX, ev.clientY);
+        }
+      };
+      const onUp = () => {
+        window.clearTimeout(hold);
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        if (drag) endDrag(true);
+      };
+      document.addEventListener("pointermove", onMove, { passive: false });
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+    });
+    document.getElementById("usage-pane").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (e.target.closest("[data-filler]")) {
+        e.preventDefault();
+        fillerOpen = true;
+        render();
+        return;
+      }
+      const toggle = e.target.closest("[data-toggle]");
+      if (!toggle) return;
+      e.preventDefault();
+      toggleExpand(toggle.dataset.toggle);
+      persistUi();
+      render();
+    });
+
+    document.getElementById("panel-scroll").addEventListener("scroll", syncScrollbar);
+    window.addEventListener("resize", syncScrollbar);
+
+    document.getElementById("settings-pane").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (e.target.closest("[data-hide]")) return;
+      const pick = e.target.closest("[data-plan]");
+      if (!pick) return;
+      e.preventDefault();
+      settingsPlan = pick.dataset.plan;
+      testState = "";
+      testMessage = "";
+      render();
+    });
+
+    document.getElementById("settings-pane").addEventListener("input", (e) => {
+      const input = e.target.closest("[data-id]");
+      if (input) drafts[input.dataset.id] = input.value;
+    });
+
+    document.getElementById("settings-pane").addEventListener("click", (e) => {
+      if (clickLock && e.target.closest("#settings-back")) return;
+      const hideBtn = e.target.closest("[data-hide]");
+      if (hideBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleHidden(hideBtn.dataset.hide);
+        render();
+        return;
+      }
+      if (e.target.closest("#settings-back")) {
+        settingsPlan = "";
+        testState = "";
+        testMessage = "";
+        render();
+        return;
+      }
+      const pick = e.target.closest("[data-plan]");
+      if (pick) {
+        settingsPlan = pick.dataset.plan;
+        testState = "";
+        testMessage = "";
+        render();
+        return;
+      }
+      const density = e.target.closest("[data-density]");
+      if (density) {
+        ui.density = density.dataset.density === "compact" ? "compact" : "comfy";
+        persistUi();
+        render();
+        return;
+      }
+      const remove = e.target.closest("[data-remove]");
+      if (remove) {
+        configured[remove.dataset.remove] = false;
+        drafts[remove.dataset.remove] = "";
+        ui.hidden = (ui.hidden || []).filter((x) => x !== remove.dataset.remove);
+        testState = "";
+        testMessage = "";
+        persistConfigured();
+        persistUi();
+        render();
+        return;
+      }
+      if (e.target.closest("#save-test")) {
+        mockTestKey(settingsPlan);
+        return;
+      }
+      if (e.target.closest("#view-usage")) {
+        setTab("usage");
+      }
+    });
+
+    document.getElementById("bar-btn").addEventListener("click", () => {
+      const dest = needsSetup() ? "settings" : "usage";
+      if (panelOpen && tab === dest) {
+        panelOpen = false;
+      } else {
+        panelOpen = true;
+        setTab(dest);
+      }
+      document.getElementById("panel").hidden = !panelOpen;
+      document.getElementById("bar-btn").setAttribute("aria-pressed", String(panelOpen));
+    });
+    document.getElementById("bar-btn").addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (panelOpen && tab === "settings") {
+        panelOpen = false;
+      } else {
+        panelOpen = true;
+        setTab("settings");
+      }
+      document.getElementById("panel").hidden = !panelOpen;
+      document.getElementById("bar-btn").setAttribute("aria-pressed", String(panelOpen));
+    });
+
+    document.getElementById("filler-zoom").addEventListener("click", () => {
+      fillerOpen = false;
+      render();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (drag) {
+          endDrag(true);
+          return;
+        }
+        if (fillerOpen) {
+          fillerOpen = false;
+          render();
+          return;
+        }
+        panelOpen = false;
+        document.getElementById("panel").hidden = true;
+        document.getElementById("bar-btn").setAttribute("aria-pressed", "false");
+      }
+      if (!panelOpen) return;
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+      if (e.key === "s" || e.key === "S") setTab("settings");
+      if (e.key === "u" || e.key === "U") setTab("usage");
+      if (e.key === "h" || e.key === "ArrowLeft") setTab("usage");
+      if (e.key === "l" || e.key === "ArrowRight") setTab("settings");
+    });
+
+    function tickClock() {
+      const d = new Date();
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      document.getElementById("clock").textContent = days[d.getDay()] + " " + hh + ":" + mm;
+    }
+
+    tickClock();
+    setInterval(tickClock, 30000);
+    setInterval(cycleFiller, FILLER_ROTATE_MS);
+    render();
+  </script>
+</body>
+</html>

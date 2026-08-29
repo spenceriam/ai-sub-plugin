@@ -1,0 +1,29 @@
+{
+  "user": {
+    "userId": "d1qfqcun3mk4um3ncpg0",
+    "region": "REGION_OVERSEA",
+    "membership": { "level": "LEVEL_STANDARD" },
+    "businessId": ""
+  },
+  "usage": {
+    "limit": "100",
+    "used": "7",
+    "remaining": "93",
+    "resetTime": "2026-09-01T14:18:43.898399Z"
+  },
+  "limits": [
+    {
+      "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" },
+      "detail": {
+        "limit": "100",
+        "remaining": "100",
+        "resetTime": "2026-08-28T02:18:43.898399Z"
+      }
+    }
+  ],
+  "parallel": { "limit": "30" },
+  "totalQuota": {},
+  "authentication": { "method": "METHOD_API_KEY", "scope": "FEATURE_CODING" },
+  "subType": "TYPE_PURCHASE",
+  "domain": "DOMAIN_NEXUS"
+}

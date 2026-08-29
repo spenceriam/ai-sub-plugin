@@ -1,0 +1,69 @@
+/* Last Horizon + first-party panel tokens.
+   /usr/share/omarchy/themes/last-horizon/colors.toml
+   /usr/share/omarchy/shell/Commons/Style.qml
+   Bluetooth/audio/agents use Style.space(14) section gaps and popupPadding 14.
+   Comfy maps to panelPadding 18 / panelGap 14. Compact is the denser option.
+*/
+:root {
+  --bg: #0c0b0c;
+  --bg-dark: #090809;
+  --bg-darker: #060606;
+  --fg: #fafcfb;
+  --accent: #b59790;
+  --urgent: #c38b7b;
+  --muted: #584e51;
+  --dim: #a1a3a2;
+  --header-dim: #b2b4b3;
+
+  --font: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, monospace;
+  --caption: 10px;
+  --body-small: 11px;
+  --body: 12px;
+  --title: 14px;
+  --display: 24px;
+
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-18: 18px;
+  --space-380: 380px;
+
+  --bar-h: 26px;
+  --icon-slot: 27px;
+  --icon-font: 13px;
+  --popup-pad: 14px;
+  --panel-gap: 5px;
+  --radius: 0px;
+  --border-w: 2px;
+  --meter-h: 4px;
+
+  --fill-normal: rgba(250, 252, 251, 0.04);
+  --fill-hover: rgba(250, 252, 251, 0.08);
+  --fill-selected: rgba(250, 252, 251, 0.18);
+  --border-normal: rgba(250, 252, 251, 0.4);
+  --track: rgba(250, 252, 251, 0.18);
+  --sep: rgba(250, 252, 251, 0.12);
+  --model-row: rgba(250, 252, 251, 0.05);
+  --model-fill: rgba(250, 252, 251, 0.14);
+
+  --popup-border-a: #8a8588ee;
+  --popup-border-b: #e2dddcee;
+
+  --card-pad: 18px;
+  --grid-gap: 14px;
+  --donut: 88px;
+  --donut-hole: 52%;
+  --section-gap: 14px;
+}
+
+[data-density="compact"] {
+  --card-pad: 10px;
+  --grid-gap: 8px;
+  --donut: 64px;
+  --donut-hole: 56%;
+  --section-gap: 10px;
+}
