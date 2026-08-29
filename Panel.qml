@@ -51,6 +51,7 @@ Panel {
   property string notifyAddedId: ""
   property var notifyAlarm: ({})
   property var notifyProblem: ({})
+  property bool notifyReady: false
   property string notifiedRelease: ""
   property string installedVersion: ""
   property string latestVersion: ""
@@ -1072,7 +1073,6 @@ Panel {
             flickableDirection: Flickable.VerticalFlick
             interactive: contentHeight > height && root.dragId === ""
             onContentHeightChanged: contentY = root.clamp(contentY, 0, Math.max(0, contentHeight - height))
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ScrollBar.vertical: ScrollBar {
               id: vScroll
               policy: panelFlick.contentHeight > panelFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
