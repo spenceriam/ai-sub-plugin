@@ -2,7 +2,7 @@
 
 Date: 2026-08-27. No live keys were used in this pass.
 
-Goal: can Spencer's four subscriptions expose 5-hour / weekly / monthly usage via an API key?
+Goal: can Spencer Francisco's four subscriptions expose 5-hour / weekly / monthly usage via an API key?
 
 ## Verdict
 

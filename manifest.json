@@ -3,7 +3,7 @@
   "id": "io.github.spenceriam.ai-sub-monitor",
   "name": "AI Sub Monitor",
   "version": "0.1.0",
-  "author": "Spencer",
+  "author": "Spencer Francisco",
   "license": "MIT",
   "description": "Quick glance plugin for AI subscriptions such as Kimi Code, MiniMax Token Plan, Z.ai GLM Coding Plan, and others.",
   "kinds": ["bar-widget"],

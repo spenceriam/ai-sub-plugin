@@ -97,3 +97,7 @@ Usage API (if you have it):
 ```
 
 A PR should add a collector in `collect.py`, a fixture under `tests/fixtures/`, and a Settings picker row. Use the provider's official plan name.
+
+## Credits
+
+Cursor session detection and dashboard usage RPCs follow [mrlarsendk/omarchy-cursor-usage](https://github.com/mrlarsendk/omarchy-cursor-usage) (MIT, Copyright 2026 Michael Larsen). This plugin maps those meters into the same tiles as the other plans.
