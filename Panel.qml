@@ -80,7 +80,8 @@ Panel {
     { id: "minimax", label: "MiniMax Token Plan", provider: "MiniMax", hint: "Subscription Key — not a PAYG sk-api- key" },
     { id: "ollama", label: "Ollama Cloud", provider: "Ollama", hint: "Key from ollama.com/settings/keys" },
     { id: "kilo", label: "Kilo Pass", provider: "Kilo", hint: "Gateway API key from the bottom of app.kilo.ai/profile — not a BYOK provider key" },
-    { id: "commandcode", label: "Command Code", provider: "Command Code", hint: "Studio API key from commandcode.ai — same key as the CLI" }
+    { id: "commandcode", label: "Command Code", provider: "Command Code", hint: "Studio API key from commandcode.ai — same key as the CLI" },
+    { id: "cursor", label: "Cursor", provider: "Anysphere", auth: "session", hint: "Uses Cursor IDE or `cursor-agent login`. No API key to paste." }
   ]
   readonly property string requestPlanUrl: "https://github.com/spenceriam/ai-sub-plugin/issues/new?title=Request%20a%20plan&body=Plan%20name%3A%0AProvider%20%28and%20site%29%3A%0ADocs%20or%20pricing%20URL%3A%0A"
 
@@ -96,6 +97,16 @@ Panel {
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
+
+  readonly property string slotRegion: {
+    var p = root.parent
+    while (p) {
+      if (p.region === "left" || p.region === "center" || p.region === "right")
+        return p.region
+      p = p.parent
+    }
+    return "right"
+  }
 
   function setTab(name) {
     if (dragId !== "") cancelDrag()
@@ -276,16 +287,25 @@ Panel {
     drafts = next
   }
 
+  function sessionAuth(id) {
+    var field = root.fieldById(id)
+    return !!(field && field.auth === "session")
+  }
+
   function saveAndTest(id) {
     if (!id || testState === "testing") return
     var value = String(drafts[id] || "").trim()
-    if (value === "" && !root.keySaved(id)) {
+    var session = root.sessionAuth(id)
+    if (!session && value === "" && !root.keySaved(id)) {
       testState = "fail"
       testMessage = "Paste a key first"
       return
     }
     testState = "testing"
-    testMessage = "Checking key…"
+    testMessage = session ? "Checking Cursor login…" : "Checking key…"
+    if (session && value === "" && !root.keySaved(id)) {
+      value = "1"
+    }
     if (value !== "") {
       var updates = {}
       updates[id] = value
@@ -945,9 +965,20 @@ Panel {
     }
   }
 
+  // KeyboardPanel centers on this item, then clamps to the screen. Offset it
+  // past the clamp so a right-section icon still opens on the right edge
+  // (same as Network). The bar icon stays in Omarchy's default slot.
+  Item {
+    id: popupAnchor
+    width: 1
+    height: 1
+    enabled: false
+    x: root.slotRegion === "left" ? -100000 : (root.slotRegion === "right" ? 100000 : 0)
+  }
+
   KeyboardPanel {
     id: panel
-    anchorItem: button
+    anchorItem: root.slotRegion === "center" ? button : popupAnchor
     owner: root
     bar: root.bar
     open: root.opened
@@ -1201,7 +1232,7 @@ Panel {
 
                   Text {
                     width: parent.width
-                    text: "Pick a plan, then paste its key. Saved plans: the eye hides the Usage tile without removing the key."
+                    text: "Pick a plan. Most need a pasted key. Cursor uses your IDE or `cursor-agent login`."
                     color: root.dim
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
@@ -1319,7 +1350,11 @@ Panel {
 
                   Button {
                     width: parent.width
-                    text: root.testState === "testing" ? "Checking key…" : "Save and test"
+                    text: {
+                      if (root.testState === "testing")
+                        return root.sessionAuth(root.settingsPlan) ? "Checking Cursor login…" : "Checking key…"
+                      return root.sessionAuth(root.settingsPlan) ? "Connect and test" : "Save and test"
+                    }
                     bordered: true
                     foreground: root.foreground
                     fontFamily: root.fontFamily
@@ -1968,6 +2003,7 @@ Panel {
 
     TextField {
       id: keyInput
+      visible: !root.sessionAuth(keyRow.fieldId)
       width: parent.width
       password: true
       placeholderText: root.keySaved(keyRow.fieldId) ? "Leave blank to keep" : "Paste key"
@@ -1987,7 +2023,7 @@ Panel {
 
     Button {
       visible: root.keySaved(keyRow.fieldId)
-      text: "Remove key"
+      text: root.sessionAuth(keyRow.fieldId) ? "Disconnect" : "Remove key"
       bordered: true
       foreground: root.foreground
       fontFamily: root.fontFamily

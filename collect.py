@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
-"""Collect coding-plan usage for Kimi, GLM, MiniMax, Ollama Cloud, Kilo Pass, and Command Code.
+"""Collect coding-plan usage for Kimi, GLM, MiniMax, Ollama Cloud, Kilo Pass,
+Command Code, and Cursor.
 
 Each adapter writes one JSON record under
 $XDG_STATE_HOME/omarchy/ai-sub-monitor/<id>.json. Missing keys skip that
-provider. Wrong-product wallets are not queried.
+provider. Wrong-product wallets are not queried. Cursor uses the local IDE
+or cursor-agent login instead of a pasted API key.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import re
+import sqlite3
+import stat
 import sys
 import tempfile
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -39,7 +46,7 @@ def plugin_version() -> str:
 
 
 USER_AGENT = "ai-sub-monitor/" + (plugin_version() or "0.1.0")
-PROVIDER_ORDER = ("kimi", "glm", "minimax", "ollama", "kilo", "commandcode")
+PROVIDER_ORDER = ("kimi", "glm", "minimax", "ollama", "kilo", "commandcode", "cursor")
 PROVIDER_ENV = {
     "kimi": "KIMI_API_KEY",
     "glm": "ZAI_API_KEY",
@@ -47,7 +54,9 @@ PROVIDER_ENV = {
     "ollama": "OLLAMA_API_KEY",
     "kilo": "KILO_API_KEY",
     "commandcode": "COMMAND_CODE_API_KEY",
+    "cursor": "CURSOR_ENABLED",
 }
+SESSION_PROVIDERS = frozenset({"cursor"})
 ENV_VALUE_KEYS = tuple(PROVIDER_ENV.values()) + (
     "ZAI_HOST",
     "MINIMAX_HOST",
@@ -137,6 +146,8 @@ def save_keys(updates: dict[str, Any]) -> dict[str, bool]:
         if value is None:
             continue
         text = str(value).strip()
+        if provider_id in SESSION_PROVIDERS:
+            text = "1" if text else ""
         if text:
             current[env_name] = text
         else:
@@ -910,6 +921,361 @@ def collect_commandcode(opener: Callable[..., Any] | None = None) -> dict[str, A
     raise FetchError("Command Code returned no credits")
 
 
+# Credential loading, dashboard POSTs, and plan-usage parsing follow
+# mrlarsendk/omarchy-cursor-usage (MIT). Limits map onto this plugin's record shape.
+CURSOR_API_BASE = "https://api2.cursor.sh/aiserver.v1.DashboardService"
+CURSOR_AUTH_HELP = "Open Cursor and sign in, or run `cursor-agent login`."
+CURSOR_MAX_RESPONSE_BYTES = 1_000_000
+CURSOR_MAX_LOCAL_BYTES = 256_000
+CURSOR_STATE_DB = Path.home() / ".config" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+CURSOR_AUTH_JSON = Path.home() / ".config" / "cursor" / "auth.json"
+_CURSOR_UNSAFE_LABEL = re.compile(r"[^A-Za-z0-9._:+/# \-]+")
+_CURSOR_URLISH = re.compile(r"(?i)\b(?:https?|file|qrc|ftp):/[^\s]*")
+_CURSOR_HTML_TAG = re.compile(r"<[^>]*>")
+
+
+class RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_CURSOR_OPENER = urllib.request.build_opener(RejectRedirects())
+
+
+def cursor_state_db() -> Path:
+    override = (os.environ.get("CURSOR_STATE_DB") or "").strip()
+    return Path(os.path.expanduser(override)) if override else CURSOR_STATE_DB
+
+
+def cursor_auth_json() -> Path:
+    override = (os.environ.get("CURSOR_AUTH_JSON") or "").strip()
+    return Path(os.path.expanduser(override)) if override else CURSOR_AUTH_JSON
+
+
+def open_no_follow(path: Path) -> int | None:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            return fd
+    except OSError:
+        pass
+    os.close(fd)
+    return None
+
+
+def stat_no_follow(path: Path) -> os.stat_result | None:
+    fd = open_no_follow(path)
+    if fd is None:
+        return None
+    try:
+        return os.fstat(fd)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
+
+def read_local_file(path: Path, limit: int = CURSOR_MAX_LOCAL_BYTES) -> bytes | None:
+    fd = open_no_follow(path)
+    if fd is None:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as handle:
+            chunk = handle.read(limit + 1)
+            if len(chunk) > limit:
+                return None
+            return chunk
+    except (OSError, ValueError):
+        return None
+
+
+def cursor_safe_text(value: Any, limit: int = 200, fallback: str = "") -> str:
+    text = str(value or "")
+    text = _CURSOR_HTML_TAG.sub(" ", text)
+    text = "".join(" " if unicodedata.category(ch)[0] == "C" and ch not in "\t\n" else ch for ch in text)
+    text = text.replace("<", " ").replace(">", " ")
+    text = " ".join(text.split())
+    if not text:
+        return fallback
+    if len(text) > limit:
+        return text[: limit - 1] + "…"
+    return text
+
+
+def cursor_safe_label(value: Any, limit: int = 64, fallback: str = "unknown") -> str:
+    text = cursor_safe_text(value, limit=limit * 2, fallback="")
+    text = _CURSOR_URLISH.sub("", text)
+    text = _CURSOR_UNSAFE_LABEL.sub(" ", text)
+    text = " ".join(text.split())
+    if not text:
+        return fallback
+    if len(text) > limit:
+        return text[: limit - 1] + "…"
+    return text
+
+
+def cursor_format_tier(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    titled = " ".join(part.capitalize() for part in text.replace("_", " ").split())
+    return cursor_safe_label(titled, 32, fallback="")
+
+
+def cursor_model_label(raw: Any) -> str:
+    text = cursor_safe_label(raw, 64)
+    if text.lower() in ("default", "auto"):
+        return "Auto"
+    return text
+
+
+def cursor_percent(value: Any) -> float:
+    if value is None:
+        return -1.0
+    raw = number(value)
+    if raw is None or not math.isfinite(raw):
+        return -1.0
+    return raw / 100.0
+
+
+def cursor_read_item(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM ItemTable WHERE key = ? LIMIT 1", (key,)).fetchone()
+    if not row or row[0] is None:
+        return None
+    value = row[0]
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    text = str(value).strip()
+    return text or None
+
+
+def load_credentials_from_state_db(state_db: Path) -> tuple[dict[str, str | None] | None, str | None]:
+    before = stat_no_follow(state_db)
+    if before is None:
+        return None, None
+    try:
+        uri = Path(os.path.abspath(state_db)).as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=2)
+    except (sqlite3.Error, ValueError):
+        return None, "Could not open Cursor database."
+    after = stat_no_follow(state_db)
+    if after is None or (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino):
+        conn.close()
+        return None, "Could not open Cursor database."
+    try:
+        conn.execute("PRAGMA query_only = ON")
+        access_token = cursor_read_item(conn, "cursorAuth/accessToken")
+        membership = cursor_read_item(conn, "cursorAuth/stripeMembershipType")
+    except sqlite3.Error:
+        return None, "Could not read Cursor database."
+    finally:
+        conn.close()
+    if not access_token:
+        return None, None
+    return {"accessToken": access_token, "membershipType": membership}, None
+
+
+def load_credentials_from_auth_json(auth_json: Path) -> tuple[dict[str, str | None] | None, str | None]:
+    raw = read_local_file(auth_json)
+    if raw is None:
+        return None, None
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None, "Could not read Cursor auth file."
+    if not isinstance(payload, dict):
+        return None, "Cursor auth file was not a JSON object."
+    access_token = str(payload.get("accessToken") or payload.get("token") or "").strip()
+    if not access_token:
+        return None, None
+    membership = str(
+        payload.get("membershipType")
+        or payload.get("stripeMembershipType")
+        or payload.get("subscriptionTier")
+        or ""
+    ).strip() or None
+    return {"accessToken": access_token, "membershipType": membership}, None
+
+
+def load_cursor_credentials(
+    state_db: Path | None = None,
+    auth_json: Path | None = None,
+) -> tuple[dict[str, str | None] | None, str | None]:
+    db_path = state_db if state_db is not None else cursor_state_db()
+    json_path = auth_json if auth_json is not None else cursor_auth_json()
+    credentials, error = load_credentials_from_state_db(db_path)
+    if error:
+        return None, error
+    if credentials is not None:
+        return credentials, None
+    credentials, error = load_credentials_from_auth_json(json_path)
+    if error:
+        return None, error
+    if credentials is not None:
+        return credentials, None
+    if not db_path.is_file() and not json_path.is_file():
+        return None, "Cursor state database not found. " + CURSOR_AUTH_HELP
+    return None, CURSOR_AUTH_HELP
+
+
+def cursor_post(
+    access_token: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    *,
+    opener: Callable[..., Any] | None = None,
+) -> tuple[int, Any]:
+    request = urllib.request.Request(
+        f"{CURSOR_API_BASE}/{path}",
+        data=json.dumps(body or {}).encode("utf-8"),
+        method="POST",
+        headers={
+            "User-Agent": USER_AGENT,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Connect-Protocol-Version": "1",
+        },
+    )
+    fetch = opener or _CURSOR_OPENER.open
+    try:
+        with fetch(request, timeout=20) as response:
+            raw = response.read(CURSOR_MAX_RESPONSE_BYTES + 1)
+            if len(raw) > CURSOR_MAX_RESPONSE_BYTES:
+                raise FetchError("Cursor usage response was too large")
+            status = getattr(response, "status", 200)
+            text = raw.decode("utf-8", errors="replace")
+            return status, json.loads(text) if text else {}
+    except urllib.error.HTTPError as err:
+        body_bytes = err.read(CURSOR_MAX_RESPONSE_BYTES + 1)
+        if 300 <= err.code < 400:
+            raise FetchError("Cursor usage API returned an unexpected redirect", retry=False)
+        if err.code in (401, 403):
+            raise FetchError(
+                "Cursor session expired. Open Cursor and sign in again, or run `cursor-agent login`.",
+                retry=False,
+                auth=True,
+            )
+        try:
+            parsed = json.loads(body_bytes.decode("utf-8", errors="replace")) if body_bytes else {}
+        except json.JSONDecodeError:
+            parsed = {}
+        return err.code, parsed if isinstance(parsed, dict) else {}
+    except FetchError:
+        raise
+    except Exception as err:
+        raise FetchError(f"Could not reach Cursor usage API: {err}") from err
+
+
+def parse_cursor(
+    period: dict[str, Any],
+    plan: dict[str, Any] | None = None,
+    aggregations: dict[str, Any] | None = None,
+    *,
+    membership: str | None = None,
+) -> dict[str, Any]:
+    usage = period.get("planUsage") if isinstance(period, dict) else None
+    if not isinstance(usage, dict):
+        raise FetchError("Cursor usage response did not include plan usage")
+
+    reset_at = iso_from_any(period.get("billingCycleEnd"))
+    tier = ""
+    if isinstance(plan, dict):
+        info = plan.get("planInfo")
+        if isinstance(info, dict):
+            tier = cursor_format_tier(info.get("planName"))
+    if not tier:
+        tier = cursor_format_tier(membership) or cursor_format_tier(period.get("membershipType"))
+
+    total_pct = cursor_percent(usage.get("totalPercentUsed"))
+    auto_pct = cursor_percent(usage.get("autoPercentUsed"))
+    api_pct = cursor_percent(usage.get("apiPercentUsed"))
+    if auto_pct < 0 and usage.get("autoPercentUsed") is None:
+        auto_pct = 0.0
+    if api_pct < 0 and usage.get("apiPercentUsed") is None:
+        api_pct = 0.0
+
+    limits: list[dict[str, Any]] = []
+    if total_pct >= 0:
+        limits.append({"title": "Included", "percent": total_pct, "resetsAt": reset_at})
+    if auto_pct >= 0:
+        limits.append({"title": "Cursor Models", "percent": auto_pct, "resetsAt": reset_at})
+    if api_pct >= 0:
+        limits.append({"title": "Other Models", "percent": api_pct, "resetsAt": reset_at})
+    if not limits:
+        raise FetchError("Cursor usage payload had no windows")
+
+    models: list[dict[str, Any]] = []
+    rows = aggregations.get("aggregations") if isinstance(aggregations, dict) else None
+    if isinstance(rows, list):
+        totals: dict[str, int] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            label = cursor_model_label(row.get("modelIntent") or row.get("model"))
+            total = 0
+            for key in ("inputTokens", "outputTokens"):
+                amount = number(row.get(key))
+                if amount is not None:
+                    total += int(amount)
+            cache_read = number(row.get("cacheReadTokens") or row.get("cacheReadInputTokens"))
+            cache_write = number(row.get("cacheWriteTokens") or row.get("cacheCreationInputTokens"))
+            if cache_read is not None:
+                total += int(cache_read)
+            if cache_write is not None:
+                total += int(cache_write)
+            if total > 0:
+                totals[label] = totals.get(label, 0) + total
+        models = [{"name": name, "total": total} for name, total in totals.items()]
+        models.sort(key=lambda item: item["total"], reverse=True)
+        models = models[:4]
+
+    return record(
+        "cursor",
+        "Cursor",
+        "Cursor",
+        ready=True,
+        tier_label=tier,
+        limits=limits,
+        models=models,
+    )
+
+
+def collect_cursor(opener: Callable[..., Any] | None = None) -> dict[str, Any] | None:
+    if not require_key("CURSOR_ENABLED"):
+        return None
+    credentials, error = load_cursor_credentials()
+    if error:
+        raise FetchError(error, retry=False, auth=True)
+    if credentials is None:
+        raise FetchError(CURSOR_AUTH_HELP, retry=False, auth=True)
+    token = str(credentials.get("accessToken") or "")
+    membership = credentials.get("membershipType")
+    status, period = cursor_post(token, "GetCurrentPeriodUsage", {}, opener=opener)
+    if status >= 400 or not isinstance(period, dict):
+        raise FetchError(f"Cursor usage HTTP {status}")
+    plan_payload = None
+    try:
+        plan_status, plan_body = cursor_post(token, "GetPlanInfo", {}, opener=opener)
+        if plan_status < 400 and isinstance(plan_body, dict):
+            plan_payload = plan_body
+    except FetchError as err:
+        if err.auth:
+            raise
+    aggregations = None
+    try:
+        agg_status, agg_body = cursor_post(token, "GetAggregatedUsageEvents", {}, opener=opener)
+        if agg_status < 400 and isinstance(agg_body, dict):
+            aggregations = agg_body
+    except FetchError as err:
+        if err.auth:
+            raise
+    return parse_cursor(period, plan_payload, aggregations, membership=membership)
+
+
 COLLECTORS: dict[str, Callable[..., dict[str, Any] | None]] = {
     "kimi": collect_kimi,
     "glm": collect_glm,
@@ -917,6 +1283,7 @@ COLLECTORS: dict[str, Callable[..., dict[str, Any] | None]] = {
     "ollama": collect_ollama,
     "kilo": collect_kilo,
     "commandcode": collect_commandcode,
+    "cursor": collect_cursor,
 }
 
 HELP = {
@@ -926,6 +1293,7 @@ HELP = {
     "ollama": "Set OLLAMA_API_KEY from ollama.com/settings/keys.",
     "kilo": "Set KILO_API_KEY to the Gateway key at the bottom of app.kilo.ai/profile.",
     "commandcode": "Set COMMAND_CODE_API_KEY to a Studio API key from commandcode.ai.",
+    "cursor": CURSOR_AUTH_HELP,
 }
 
 
@@ -953,6 +1321,7 @@ def run_one(provider_id: str) -> int:
         "ollama": "Ollama Cloud",
         "kilo": "Kilo Pass",
         "commandcode": "Command Code",
+        "cursor": "Cursor",
     }
     chips = {
         "kimi": "Kimi",
@@ -961,6 +1330,7 @@ def run_one(provider_id: str) -> int:
         "ollama": "Ollama",
         "kilo": "Kilo",
         "commandcode": "Command",
+        "cursor": "Cursor",
     }
     try:
         result = COLLECTORS[provider_id]()
@@ -1112,11 +1482,15 @@ def probe_provider(provider_id: str) -> dict[str, Any]:
     load_env_file()
     env_name = PROVIDER_ENV[provider_id]
     if not (os.environ.get(env_name) or "").strip():
+        if provider_id in SESSION_PROVIDERS:
+            return {"ok": False, "id": provider_id, "message": "Connect Cursor from Settings"}
         return {"ok": False, "id": provider_id, "message": "No key saved for this plan"}
     dest = usage_dir() / f"{provider_id}.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     run_one(provider_id)
     if not dest.is_file():
+        if provider_id in SESSION_PROVIDERS:
+            return {"ok": False, "id": provider_id, "message": CURSOR_AUTH_HELP}
         return {"ok": False, "id": provider_id, "message": "No key saved for this plan"}
     rec = json.loads(dest.read_text(encoding="utf-8"))
     if rec.get("ready"):

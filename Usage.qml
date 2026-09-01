@@ -14,14 +14,15 @@ Item {
   readonly property string home: Quickshell.env("HOME") || ""
   readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/omarchy/ai-sub-monitor"
   readonly property string collectPath: decodeURIComponent(String(Qt.resolvedUrl("collect.py")).replace("file://", ""))
-  readonly property var displayOrder: ["kimi", "glm", "minimax", "ollama", "kilo", "commandcode"]
+  readonly property var displayOrder: ["kimi", "glm", "minimax", "ollama", "kilo", "commandcode", "cursor"]
   readonly property var providerNames: ({
     kimi: "Kimi Code",
     glm: "GLM Coding Plan",
     minimax: "MiniMax Token Plan",
     ollama: "Ollama Cloud",
     kilo: "Kilo Pass",
-    commandcode: "Command Code"
+    commandcode: "Command Code",
+    cursor: "Cursor"
   })
 
   property int refreshIntervalSec: Math.max(30, Number(setting("refreshIntervalSec", 300)))
@@ -215,7 +216,7 @@ Item {
     updateProcess.running = true
   }
 
-  property var keyStatus: ({ kimi: false, glm: false, minimax: false, ollama: false, kilo: false, commandcode: false })
+  property var keyStatus: ({ kimi: false, glm: false, minimax: false, ollama: false, kilo: false, commandcode: false, cursor: false })
   property bool keyStatusReady: false
   property string savePayload: ""
   property string pendingTestId: ""

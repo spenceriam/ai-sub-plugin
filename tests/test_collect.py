@@ -131,6 +131,133 @@ class ParseLivePayloads(unittest.TestCase):
         self.assertEqual(month["percent"], -1)
         self.assertEqual(month["valueLabel"], "$42.00 left")
 
+    def test_cursor_included_and_model_pools(self):
+        record = collect.parse_cursor(
+            load("cursor-period.json"),
+            load("cursor-plan.json"),
+            load("cursor-aggregations.json"),
+            membership="pro",
+        )
+        self.assertEqual(record["id"], "cursor")
+        self.assertEqual(record["name"], "Cursor")
+        self.assertEqual(record["tierLabel"], "Pro")
+        by_title = {row["title"]: row for row in record["limits"]}
+        self.assertAlmostEqual(by_title["Included"]["percent"], 0.31)
+        self.assertAlmostEqual(by_title["Cursor Models"]["percent"], 0.20)
+        self.assertAlmostEqual(by_title["Other Models"]["percent"], 0.05)
+        self.assertEqual(by_title["Included"]["resetsAt"], "2026-09-15T00:00:00.000Z")
+        self.assertEqual(
+            [row["name"] for row in record["models"]],
+            ["claude-4-sonnet", "gpt-5", "Auto"],
+        )
+        self.assertEqual(record["models"][0]["total"], 1250)
+        dumped = json.dumps(record)
+        self.assertNotIn("accessToken", dumped)
+        self.assertNotIn("Bearer", dumped)
+
+
+class CursorAuth(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
+
+    def write_auth(self, name="auth.json", **payload):
+        path = self.tmp / name
+        path.write_text(json.dumps(payload or {"accessToken": "tok-abc", "membershipType": "pro"}))
+        return path
+
+    def test_reads_auth_json(self):
+        creds, error = collect.load_credentials_from_auth_json(self.write_auth())
+        self.assertIsNone(error)
+        self.assertEqual(creds["accessToken"], "tok-abc")
+        self.assertEqual(creds["membershipType"], "pro")
+
+    def test_refuses_symlinked_auth_json(self):
+        real = self.write_auth("real.json")
+        link = self.tmp / "link.json"
+        link.symlink_to(real)
+        self.assertEqual(collect.load_credentials_from_auth_json(link), (None, None))
+
+    def test_refuses_oversized_auth_json(self):
+        fat = self.tmp / "fat.json"
+        fat.write_bytes(b"x" * (collect.CURSOR_MAX_LOCAL_BYTES + 1))
+        self.assertEqual(collect.load_credentials_from_auth_json(fat), (None, None))
+
+    def test_reads_state_db(self):
+        import sqlite3
+
+        db = self.tmp / "state.vscdb"
+        conn = sqlite3.connect(db)
+        try:
+            conn.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute(
+                "INSERT INTO ItemTable VALUES (?, ?)",
+                ("cursorAuth/accessToken", "tok-db"),
+            )
+            conn.execute(
+                "INSERT INTO ItemTable VALUES (?, ?)",
+                ("cursorAuth/stripeMembershipType", "pro"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        creds, error = collect.load_credentials_from_state_db(db)
+        self.assertIsNone(error)
+        self.assertEqual(creds["accessToken"], "tok-db")
+
+    def test_refuses_symlinked_state_db(self):
+        import sqlite3
+
+        planted = self.tmp / "planted.vscdb"
+        conn = sqlite3.connect(planted)
+        try:
+            conn.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute("INSERT INTO ItemTable VALUES (?, ?)", ("cursorAuth/accessToken", "tok-ATTACKER"))
+            conn.commit()
+        finally:
+            conn.close()
+        link = self.tmp / "state.vscdb"
+        link.symlink_to(planted)
+        creds, _ = collect.load_credentials_from_state_db(link)
+        self.assertIsNone(creds)
+
+    def test_save_keys_stores_cursor_flag_not_a_token(self):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "keys.env"
+            os.environ["AI_SUB_MONITOR_ENV"] = str(path)
+            for name in collect.ENV_VALUE_KEYS:
+                os.environ.pop(name, None)
+            status = collect.save_keys({"cursor": "user-session-token-should-not-be-saved"})
+            self.assertTrue(status["cursor"])
+            text = path.read_text()
+            self.assertIn("CURSOR_ENABLED=1", text)
+            self.assertNotIn("user-session-token", text)
+            os.environ.pop("AI_SUB_MONITOR_ENV", None)
+
+    def test_probe_without_enable(self):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["AI_SUB_MONITOR_ENV"] = str(Path(tmp) / "keys.env")
+            os.environ["XDG_STATE_HOME"] = str(Path(tmp) / "state")
+            for name in collect.ENV_VALUE_KEYS:
+                os.environ.pop(name, None)
+            result = collect.probe_provider("cursor")
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["id"], "cursor")
+            self.assertIn("Connect Cursor", result["message"])
+            os.environ.pop("AI_SUB_MONITOR_ENV", None)
+            os.environ.pop("XDG_STATE_HOME", None)
+
 
 class KeyFile(unittest.TestCase):
     def test_save_keys_writes_0600_and_omits_cleared(self):
@@ -174,7 +301,7 @@ class KeyFile(unittest.TestCase):
             self.assertNotIn(secret, dumped)
             self.assertEqual(
                 json.loads(dumped),
-                {"kimi": True, "glm": False, "minimax": False, "ollama": True, "kilo": False, "commandcode": False},
+                {"kimi": True, "glm": False, "minimax": False, "ollama": True, "kilo": False, "commandcode": False, "cursor": False},
             )
             os.environ.pop("AI_SUB_MONITOR_ENV", None)
 

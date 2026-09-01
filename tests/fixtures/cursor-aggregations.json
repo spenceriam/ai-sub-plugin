@@ -1,0 +1,7 @@
+{
+  "aggregations": [
+    { "modelIntent": "claude-4-sonnet", "inputTokens": 1000, "outputTokens": 250 },
+    { "modelIntent": "default", "inputTokens": 40, "outputTokens": 10 },
+    { "modelIntent": "gpt-5", "inputTokens": 100, "outputTokens": 20, "cacheReadTokens": 5 }
+  ]
+}

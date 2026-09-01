@@ -1,6 +1,6 @@
 # AI Sub Monitor
 
-Quick glance plugin for AI subscriptions such as Kimi Code, MiniMax Token Plan, Z.ai GLM Coding Plan, and others. It sits on the Omarchy bar. Keys stay in a local env file.
+Quick glance plugin for AI subscriptions such as Kimi Code, MiniMax Token Plan, Z.ai GLM Coding Plan, Cursor, and others. It sits on the Omarchy bar. Keys stay in a local env file.
 
 Plugin id: `io.github.spenceriam.ai-sub-monitor`. License: MIT.
 
@@ -16,11 +16,7 @@ omarchy plugin add https://github.com/spenceriam/ai-sub-plugin.git --enable
 
 That clones into `~/.config/omarchy/plugins/` and reloads omarchy-shell. If the session is locked, a reload can kill the lock screen.
 
-`--enable` puts the widget in the bar’s right section, after the tray. Move it next to Power so the pop-down shares the same right edge as Network, Bluetooth, and Audio:
-
-```sh
-omarchy bar move io.github.spenceriam.ai-sub-monitor --section right --before omarchy.power
-```
+`--enable` puts the widget in the bar’s right section at Omarchy’s default slot (after the tray). The pop-down pins to the right screen edge, same as Network, Bluetooth, and Audio.
 
 Python 3 is required (`collect.py` uses the stdlib only). No extra packages, daemons, or sudo.
 
@@ -36,7 +32,7 @@ The plugin checks GitHub Releases about every six hours. If the latest tag is ne
 
 ## Usage
 
-- First click with no saved keys opens **Settings** (pick one plan, paste the key, **Save and test**).
+- First click with no saved plans opens **Settings** (pick one plan, paste the key, **Save and test**). Cursor is **Connect and test** — it uses the Cursor IDE or `cursor-agent login`, not a pasted key.
 - After a key is saved: left-click **Usage**, right-click **Settings**, middle-click switches. The same view again closes the panel.
 - Click a tile to expand or collapse it. Hold or drag a collapsed tile to reorder.
 - `s` Settings, `u` Usage, `h`/`l` switch tabs, `r` refresh, Esc close.
@@ -46,7 +42,7 @@ Usage lists saved plans that are not hidden. The Settings eye (󰈈) hides a til
 ## Configure
 
 ```sh
-omarchy bar move io.github.spenceriam.ai-sub-monitor --section right --before omarchy.power
+omarchy bar move io.github.spenceriam.ai-sub-monitor --section right
 ```
 
 Do not put API keys in `shell.json`. Save them in Settings, which writes `~/.config/ai-sub-monitor/keys.env` (directory `0700`, file `0600`). Override path: `AI_SUB_MONITOR_ENV`. Existing environment variables win over the file.
@@ -59,8 +55,9 @@ Do not put API keys in `shell.json`. Save them in Settings, which writes `~/.con
 | Ollama Cloud | Ollama | `OLLAMA_API_KEY` |
 | Kilo Pass | Kilo | `KILO_API_KEY` |
 | Command Code | Command Code | `COMMAND_CODE_API_KEY` |
+| Cursor | Anysphere | `CURSOR_ENABLED` (Settings writes this; no session token in the file) |
 
-Use a Code Console / coding-plan / Subscription / gateway / Studio key — not Moonshot/Z.AI wallets, MiniMax PAYG, or Kilo BYOK provider keys. China hosts: `ZAI_HOST` or `MINIMAX_HOST` in the env file. Kilo org wallet: `KILO_ORG_ID`.
+Use a Code Console / coding-plan / Subscription / gateway / Studio key — not Moonshot/Z.AI wallets, MiniMax PAYG, or Kilo BYOK provider keys. China hosts: `ZAI_HOST` or `MINIMAX_HOST` in the env file. Kilo org wallet: `KILO_ORG_ID`. Cursor reads `~/.config/Cursor/User/globalStorage/state.vscdb` or `~/.config/cursor/auth.json`.
 
 Bar setting `refreshIntervalSec` (30–3600, default 300) is the usage poll interval. Density, tile order, and hidden plans persist in `$XDG_STATE_HOME/omarchy/ai-sub-monitor/ui.json`.
 
@@ -79,9 +76,9 @@ If the plugin is already gone, run `--uninstall` from a clone of this repo.
 
 ## Dependencies
 
-- **Python 3** (stdlib). `collect.py` calls each provider’s usage HTTP API with the saved Bearer/Authorization key.
+- **Python 3** (stdlib). `collect.py` calls each provider’s usage HTTP API with the saved Bearer/Authorization key. Cursor uses the local IDE/`cursor-agent` session instead.
 - **Omarchy notifications** via `omarchy notification send` (not `notify-send`): plan added, key/usage failure, usage ≥ 90%.
-- Network to: `api.kimi.com`, `api.z.ai` (or `open.bigmodel.cn`), `api.minimax.io` (or `api.minimaxi.com`), `ollama.com`, `app.kilo.ai` / `api.kilo.ai`, `api.commandcode.ai`.
+- Network to: `api.kimi.com`, `api.z.ai` (or `open.bigmodel.cn`), `api.minimax.io` (or `api.minimaxi.com`), `ollama.com`, `app.kilo.ai` / `api.kilo.ai`, `api.commandcode.ai`, `api2.cursor.sh`.
 
 ## Contribute
 
