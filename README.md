@@ -16,10 +16,10 @@ omarchy plugin add https://github.com/spenceriam/ai-sub-plugin.git --enable
 
 That clones into `~/.config/omarchy/plugins/` and reloads omarchy-shell. If the session is locked, a reload can kill the lock screen.
 
-`--enable` places the widget in the bar’s right section. To put it after Activity Monitor:
+`--enable` puts the widget in the bar’s right section, after the tray. Move it next to Power so the pop-down shares the same right edge as Network, Bluetooth, and Audio:
 
 ```sh
-omarchy plugin enable io.github.spenceriam.ai-sub-monitor --section right --after stappmus.activity-monitor
+omarchy bar move io.github.spenceriam.ai-sub-monitor --section right --before omarchy.power
 ```
 
 Python 3 is required (`collect.py` uses the stdlib only). No extra packages, daemons, or sudo.
@@ -46,7 +46,7 @@ Usage lists saved plans that are not hidden. The Settings eye (󰈈) hides a til
 ## Configure
 
 ```sh
-omarchy bar move io.github.spenceriam.ai-sub-monitor --section right
+omarchy bar move io.github.spenceriam.ai-sub-monitor --section right --before omarchy.power
 ```
 
 Do not put API keys in `shell.json`. Save them in Settings, which writes `~/.config/ai-sub-monitor/keys.env` (directory `0700`, file `0600`). Override path: `AI_SUB_MONITOR_ENV`. Existing environment variables win over the file.
